@@ -1,0 +1,20 @@
+{
+    "configurations": [
+        {
+            "name": "ARM none eabi GCC",
+            "includePath": [
+                "${workspaceFolder}/MESC_F405RG/**"
+            ],
+            "defines": [
+                //"DEBUG=1"
+                //"SystemCoreClock = 180000000UL"
+            ],
+            "compilerPath": "/home/jens/st/stm32cubeide_1.16.1/plugins/com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.12.3.rel1.linux64_1.0.200.202406132123/tools/bin/arm-none-eabi-gcc",
+            "intelliSenseMode": "${default}", //   "linux-gcc-arm",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "configurationProvider": "ms-vscode.cmake-tools",
+        }
+    ],
+    "version": 4
+}
