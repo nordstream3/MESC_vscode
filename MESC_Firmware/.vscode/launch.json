@@ -5,6 +5,16 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python Debugger: Current File with Arguments",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "/home/jens/screenlog.0" //"${command:pickArgs}"
+            ]
+        },
+        {
             "name": "Debug with OpenOCD",
             "cwd": "${workspaceRoot}",
             "executable": "${workspaceRoot}/MESC_F405RG/build/MESC_F405RG.elf",
@@ -28,7 +38,6 @@
                 "target/stm32f4x.cfg",
             ]
         },
-
         {
             "name": "Debug with ST-Link",
             "cwd": "${workspaceFolder}",
@@ -49,6 +58,5 @@
                 "target/stm32f4x.cfg",
             ]
         },
-
     ]
 }

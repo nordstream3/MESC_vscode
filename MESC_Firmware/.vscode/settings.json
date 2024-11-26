@@ -35,7 +35,10 @@
         "mydrive.h": "c",
         "buffer.h": "c",
         "cstdint": "c",
-        "compare": "c"
+        "compare": "c",
+        "mescinterface.h": "c",
+        "meschw_setup.h": "c",
+        "tterm.h": "c"
     },
     "cmake.sourceDirectory": "/home/jens/src/MESC_Firmware_v2/MESC_F405RG",
 }
