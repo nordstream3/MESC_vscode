@@ -465,41 +465,226 @@ void print_index(TERMINAL_HANDLE * handle, char * name, uint32_t count, float in
 
 }
 
+static const unsigned char base64_table[65] =
+	"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/**
+ * base64_encode - Base64 encode
+ * @src: Data to be encoded
+ * @len: Length of the data to be encoded
+ * @out_len: Pointer to output length variable, or %NULL if not used
+ * Returns: Allocated buffer of out_len bytes of encoded data,
+ * or %NULL on failure
+ *
+ * Caller is responsible for freeing the returned buffer. Returned buffer is
+ * nul terminated to make it easier to use as a C string. The nul terminator is
+ * not included in out_len.
+ */
+size_t base64_encode(void *dest, const void *src, size_t n)
+//unsigned char * base64_encode(unsigned char *dest, const unsigned char *src, size_t len, size_t *out_len)
+{
+	unsigned char *pos;
+	const unsigned char *end, *in;
+	//size_t olen;
+	////int line_len;
+
+	//olen = n * 4 / 3 + 4; /* 3-byte blocks to 4-byte */
+	//olen += olen / 72; /* line feeds */
+	//olen++; /* nul termination */
+	//if (olen < len)
+	//	return NULL; /* integer overflow */
+	//out = dest; //os_malloc(olen);
+	//if (out == NULL)
+	//	return NULL;
+
+	end = src + n;
+	in = src;
+	pos = dest;
+	//line_len = 0;
+	while (end - in >= 3) {
+		*pos++ = base64_table[in[0] >> 2];
+		*pos++ = base64_table[((in[0] & 0x03) << 4) | (in[1] >> 4)];
+		*pos++ = base64_table[((in[1] & 0x0f) << 2) | (in[2] >> 6)];
+		*pos++ = base64_table[in[2] & 0x3f];
+		in += 3;
+		//line_len += 4;
+		/*if (line_len >= 72) {
+			*pos++ = '\n';
+			line_len = 0;
+		}*/
+	}
+
+	if (end - in) {
+		*pos++ = base64_table[in[0] >> 2];
+		if (end - in == 1) {
+			*pos++ = base64_table[(in[0] & 0x03) << 4];
+			*pos++ = '=';
+		} else {
+			*pos++ = base64_table[((in[0] & 0x03) << 4) | (in[1] >> 4)];
+			*pos++ = base64_table[(in[1] & 0x0f) << 2];
+		}
+		*pos++ = '=';
+		//line_len += 4;
+	}
+
+	//if (line_len)
+	//	*pos++ = '\n';
+
+	*pos = '\0';
+
+	return pos - (unsigned char*)dest;
+
+	/*if (out_len)
+		*out_len = pos - out;
+	return out;*/
+}
+
 void log_fastloop(TERMINAL_HANDLE * handle){
 #ifndef DASH
 	lognow = 1;
 	vTaskDelay(100);
 
-
 	print_samples_now = 0;
 	lognow = 0;
 	vTaskDelay(10);
 
-	int current_sample_pos = sampled_vars.current_sample;
+	unsigned char src[256];
+	unsigned char dest[256];
 
-	ttprintf("\r\n{");
-	print_index(handle, "time", LOGLENGTH, mtr[0].FOC.pwm_period);
-	ttprintf(",");
-	print_array(handle, "Vbus.V.y1", sampled_vars.Vbus, LOGLENGTH, current_sample_pos, sizeof(float), TERM_VARIABLE_FLOAT_ARRAY);
-	ttprintf(",");
-	print_array(handle, "Iu.I_phase.y1", sampled_vars.Iu, LOGLENGTH, current_sample_pos, sizeof(float), TERM_VARIABLE_FLOAT_ARRAY);
-	ttprintf(",");
-	print_array(handle, "Iv.I_phase.y1", sampled_vars.Iv, LOGLENGTH, current_sample_pos, sizeof(float), TERM_VARIABLE_FLOAT_ARRAY);
-	ttprintf(",");
-	print_array(handle, "Iw.I_phase.y1", sampled_vars.Iw, LOGLENGTH, current_sample_pos, sizeof(float), TERM_VARIABLE_FLOAT_ARRAY);
-	ttprintf(",");
-	print_array(handle, "Vd.V_dq.y1", sampled_vars.Vd, LOGLENGTH, current_sample_pos, sizeof(float), TERM_VARIABLE_FLOAT_ARRAY);
-	ttprintf(",");
-	print_array(handle, "Vq.V_dq.y1", sampled_vars.Vq, LOGLENGTH, current_sample_pos, sizeof(float), TERM_VARIABLE_FLOAT_ARRAY);
-	ttprintf(",");
-	print_array(handle, "angle.misc.y1", sampled_vars.angle, LOGLENGTH, current_sample_pos, sizeof(uint16_t), TERM_VARIABLE_UINT_ARRAY);
-	ttprintf("}\r\n");
+	//uint32_t bytes_left = sizeof(buffer);
+	//int32_t written;
+
+	int i = sampled_vars.current_sample;
+
+	// 4 bytes: float (f)
+	// 2 bytes: int16 (h)
+	// 2 bytes: uint16 (H)
+	// 4 bytes: int32 (i)
+	// 4 bytes: uint32 (I)
+
+	ttprintf("\033]52;c;");
+	const unsigned char header[] = "<header> time f,Vbus f,Iu f,Iv f,Iw f,Vd f,Vq f,angle H,flags H,didq_d f,didq_q f,mag45 f,HFI_int_err f";
+	base64_encode(dest, header, strlen(header));
+	ttprintf(dest);
+	ttprintf("\a");
+
+	float time = 0.0f;
+	size_t sz;
+	for(uint32_t j=0;j<LOGLENGTH;j++) {
+
+		unsigned char *ptr = src;
+		ttprintf("\033]52;c;");
+
+		sz = sizeof(time);
+		ptr = memcpy(ptr, &time, sz);
+		ptr += sz;
+		time += mtr[0].FOC.pwm_period;
+
+		sz = sizeof(sampled_vars.Vbus[i]);
+		ptr = memcpy(ptr, &sampled_vars.Vbus[i], sz);
+		ptr += sz;
+
+		sz = sizeof(sampled_vars.Iu[i]);
+		ptr = memcpy(ptr, &sampled_vars.Iu[i], sz);
+		ptr += sz;
+
+		sz = sizeof(sampled_vars.Iv[i]);
+		ptr = memcpy(ptr, &sampled_vars.Iv[i], sz);
+		ptr += sz;
+
+		sz = sizeof(sampled_vars.Iw[i]);
+		ptr = memcpy(ptr, &sampled_vars.Iw[i], sz);
+		ptr += sz;
+
+		sz = sizeof(sampled_vars.Vd[i]);
+		ptr = memcpy(ptr, &sampled_vars.Vd[i], sz);
+		ptr += sz;
+
+		sz = sizeof(sampled_vars.Vq[i]);
+		ptr = memcpy(ptr, &sampled_vars.Vq[i], sz);
+		ptr += sz;
+
+		sz = sizeof(sampled_vars.angle[i]);
+		ptr = memcpy(ptr, &sampled_vars.angle[i], sz);
+		ptr += sz;
+
+		// HFI logging added by JEO
+		sz = sizeof(sampled_vars.flags[i]);
+		ptr = memcpy(ptr, &sampled_vars.flags[i], sz);
+		ptr += sz;
+
+		sz = sizeof(sampled_vars.didq_d[i]);
+		ptr = memcpy(ptr, &sampled_vars.didq_d[i], sz);
+		ptr += sz;
+
+		sz = sizeof(sampled_vars.didq_q[i]);
+		ptr = memcpy(ptr, &sampled_vars.didq_q[i], sz);
+		ptr += sz;
+
+		float mag45 = sqrtf(sampled_vars.didq_d[i] * sampled_vars.didq_d[i] + sampled_vars.didq_q[i] * sampled_vars.didq_q[i]);
+		sz = sizeof(mag45);
+		ptr = memcpy(ptr, &mag45, sz);
+		ptr += sz;
+
+		sz = sizeof(sampled_vars.HFI_int_err[i]);
+		ptr = memcpy(ptr, &sampled_vars.HFI_int_err[i], sz);
+		ptr += sz;
+
+		base64_encode(dest, src, ptr-src);
+		ttprintf(dest);
+		ttprintf("\a");
+
+		i++;
+		if(i == LOGLENGTH){
+			i=0;
+		}
+	}
 
 
+	/*ttprintf("time,");
+	ttprintf("Vbus.V.y1,");
+	ttprintf("Iu.I_phase.y1,");
+	ttprintf("Iv.I_phase.y1,");
+	ttprintf("Iw.I_phase.y1,");
+	ttprintf("Vd.V_dq.y1,");
+	ttprintf("Vq.V_dq.y1,");
+	ttprintf("angle.misc.y1,");
+	ttprintf("}");
+	ttprintf("\a");
+
+	float time = 0.0f;
+	for(uint32_t j=0;j<LOGLENGTH;j++) {
+
+		ttprintf("\033]52;c;[");
+		ttprintf("%.2f,", time);
+		time += mtr[0].FOC.pwm_period;
+		ttprintf("%.2f,", sampled_vars.Vbus[i]);
+		ttprintf("%.2f,", sampled_vars.Iu[i]);
+		ttprintf("%.2f,", sampled_vars.Iv[i]);
+		ttprintf("%.2f,", sampled_vars.Iw[i]);
+		ttprintf("%.2f,", sampled_vars.Vd[i]);
+		ttprintf("%.2f,", sampled_vars.Vq[i]);
+		ttprintf("%lu,", sampled_vars.angle[i]);
+
+		// HFI logging added by JEO
+		ttprintf("%lu,", sampled_vars.flags[i]);
+		ttprintf("%.2f,", sampled_vars.didq_d[i]);
+		ttprintf("%.2f,", sampled_vars.didq_q[i]);
+		float mag45 = sqrtf(sampled_vars.didq_d[i] * sampled_vars.didq_d[i] + sampled_vars.didq_q[i] * sampled_vars.didq_q[i]);
+		ttprintf("%.2f,", mag45);
+		ttprintf("%.2f,", sampled_vars.HFI_int_err[i]);
+		ttprintf("]\a");
+
+		i++;
+		if(i == LOGLENGTH){
+			i=0;
+		}
+	}*/
+
+	vTaskDelay(100);
 	lognow = 1;
 #endif
 }
-
 
 /*****************************************************************************
 *
@@ -541,6 +726,7 @@ uint8_t CMD_log(TERMINAL_HANDLE * handle, uint8_t argCount, char ** args){
 			ttprintf("\t -r\t Delete all vars from log\r\n");
 			ttprintf("\t -l\t List vars\r\n");
 			ttprintf("\t -s\t Log speed [ms]\r\n");
+			ttprintf("\t -fl\t Print log\r\n");
 			return TERM_CMD_EXIT_SUCCESS;
 		}
 		if(strcmp(args[i], "-fl")==0){

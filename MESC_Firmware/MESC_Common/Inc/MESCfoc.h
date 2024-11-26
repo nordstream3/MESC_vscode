@@ -632,7 +632,8 @@ extern input_vars_t input_vars;
 
 //Logging
 #ifndef LOGLENGTH
-#define LOGLENGTH 100
+#define LOGLENGTH 200
+#define POST_ERROR_SAMPLES 		LOGLENGTH/4
 #endif
 //We want to log primarily Ia Ib Ic, Vd,Vq, phase angle, which gives us a complete picture of the machine state
 //4 bytes per variable*6 variables*1000 = 24000bytes. Lowest spec target is F303CB with 48kB SRAM, so this is OK
@@ -644,7 +645,16 @@ typedef struct {
 	float Vd[LOGLENGTH];
 	float Vq[LOGLENGTH];
 	uint16_t angle[LOGLENGTH];
+
+	// HFI logging added by JEO
+	uint16_t flags[LOGLENGTH];
+	float didq_d[LOGLENGTH];
+	float didq_q[LOGLENGTH];
+	float HFI_int_err[LOGLENGTH];
+	uint32_t angle_flags[LOGLENGTH];
+
 	uint32_t current_sample;
+
 } sampled_vars_t;
 
 extern volatile int print_samples_now, lognow;

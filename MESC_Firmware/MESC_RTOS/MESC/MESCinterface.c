@@ -493,6 +493,7 @@ void populate_vars(){
 	TERM_addVar(mtr[0].FOC.speed_kp					, 0.0f		, 10.0f		, "speed_kp"	, "Speed Proportional gain"				, VAR_ACCESS_RW	, NULL		, &TERM_varList);
 	TERM_addVar(mtr[0].FOC.speed_ki					, 0.0f		, 10.0f		, "speed_ki"	, "Speed Integral gain"					, VAR_ACCESS_RW	, NULL		, &TERM_varList);
 	TERM_addVar(mtr[0].ControlMode					, 0			, 3			, "control_mode", "0=Torque, 1=Speed, 2=Duty, 3=Pos"	, VAR_ACCESS_RW	, NULL		, &TERM_varList);
+	TERM_addVar(mtr[0].sample_now					, 0			, 1			, "sample_now"	, "0=no sampling, 1=sampling"			, VAR_ACCESS_RW	, NULL		, &TERM_varList);
 
 	#ifdef HAL_CAN_MODULE_ENABLED
 	TERM_addVar(can1.node_id						, 1			, 254		, "node_id"	    , "Node ID"								, VAR_ACCESS_RW	, callback	, &TERM_varList);
@@ -594,9 +595,6 @@ void TASK_CAN_telemetry_slow(TASK_CAN_handle * handle){
 	TASK_CAN_add_uint32(handle	, CAN_ID_FOC_HYPER		, CAN_BROADCAST, motor_curr->FOC.cycles_fastloop	, motor_curr->FOC.cycles_pwmloop	, 0);
 
 }
-
-
-#define POST_ERROR_SAMPLES 		LOGLENGTH/2
 
 void TASK_CAN_aux_data(TASK_CAN_handle * handle){
 	static int samples_sent=-1;

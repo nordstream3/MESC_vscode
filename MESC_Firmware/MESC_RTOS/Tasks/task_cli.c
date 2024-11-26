@@ -141,7 +141,7 @@ uint32_t ext_printf(void * port, const char* format, ...) {
 	int len = 0;
 	if(format != NULL){
 
-		char send_buffer[128];
+		char send_buffer[256];
 		len = vsnprintf(send_buffer, sizeof(send_buffer), format, arg);
 		if(len > sizeof(send_buffer)){
 			len = sizeof(send_buffer);
