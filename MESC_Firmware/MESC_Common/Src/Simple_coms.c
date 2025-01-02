@@ -32,8 +32,8 @@ void SimpleComsProcess(COMS_data_t *coms_instance){
 		//coms_instance->len = sprintf(coms_instance->data,"%.2f,%.2f,%.2f,%.2f, %.2f \r\n",
 			(double)mtr[0].Conv.Vbus,
 			(double)mtr[0].FOC.eHz,
-			(double)mtr[0].FOC.Idq_smoothed.d,
-			(double)mtr[0].FOC.Idq_smoothed.q,
+			(double)mtr[0].FOC.base.Idq_smoothed.d,
+			(double)mtr[0].FOC.base.Idq_smoothed.q,
 			(double)(mtr[0].FOC.currentPower.q+mtr[0].FOC.currentPower.d));
 #ifdef MESC_UART_USB
 		CDC_Transmit_FS((uint8_t*)coms_instance->data, coms_instance->len);

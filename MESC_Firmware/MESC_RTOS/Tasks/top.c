@@ -97,8 +97,8 @@ static void TASK_main(void *pvParameters){
             for(int i=0;i<NUM_MOTORS;i++){
             	sum_fastloop += mtr[i].FOC.cycles_fastloop;
             	sum_pwmloop += mtr[i].FOC.cycles_pwmloop;
-            	if(max_pwm < mtr[i].FOC.pwm_frequency){
-            		max_pwm = mtr[i].FOC.pwm_frequency;
+            	if(max_pwm < mtr[i].FOC.base.pwm_frequency){
+            		max_pwm = mtr[i].FOC.base.pwm_frequency;
             	}
             }
 

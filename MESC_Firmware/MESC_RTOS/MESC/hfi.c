@@ -125,17 +125,17 @@ static void TASK_main(void *pvParameters){
     	TERM_setCursorPos(handle, 1, 0);
     	highlight(handle, "Angle:", 0, selected);
     	TERM_setCursorPos(handle, 2, 0);
-    	bargraph(handle, 0, 65536, motor_curr->FOC.FOCAngle);
+    	bargraph(handle, 0, 65536, motor_curr->FOC.base.FOCAngle);
 
     	if(selected==0){
     		if(c=='r'){
-    			motor_curr->FOC.FOCAngle=32768;
+    			motor_curr->FOC.base.FOCAngle=32768;
     		}
 			if(c=='-'){
-				motor_curr->FOC.FOCAngle-=100;
+				motor_curr->FOC.base.FOCAngle-=100;
 			}
 			if(c=='+'){
-				motor_curr->FOC.FOCAngle+=100;
+				motor_curr->FOC.base.FOCAngle+=100;
 			}
     	}
 
@@ -161,17 +161,17 @@ static void TASK_main(void *pvParameters){
 		TERM_setCursorPos(handle, 5, 0);
 		highlight(handle, "Mod didq:", 2, selected);
 		TERM_setCursorPos(handle, 6, 0);
-		bargraph(handle, 0, 10, motor_curr->FOC.HFI45_mod_didq);
+		bargraph(handle, 0, 10, motor_curr->hfi.HFI45_mod_didq);
 
 		if(selected==2){
 			if(c=='r'){
-				motor_curr->FOC.HFI45_mod_didq = HFI_THRESHOLD;
+				motor_curr->hfi.HFI45_mod_didq = HFI_THRESHOLD;
 			}
 			if(c=='-'){
-				motor_curr->FOC.HFI45_mod_didq -= 0.1f;
+				motor_curr->hfi.HFI45_mod_didq -= 0.1f;
 			}
 			if(c=='+'){
-				motor_curr->FOC.HFI45_mod_didq += 0.1f;
+				motor_curr->hfi.HFI45_mod_didq += 0.1f;
 			}
 		}
 

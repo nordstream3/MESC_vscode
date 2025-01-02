@@ -89,7 +89,6 @@ volatile int print_samples_now, lognow;
 #define CPU_CYCLES *DWT_CYCCNT
 
 static void SlowStartup(MESC_motor_typedef *_motor);
-static void SlowHFI(MESC_motor_typedef *_motor);
 static void calculatePower(MESC_motor_typedef *_motor);
 static void LimitFWCurrent(MESC_motor_typedef *_motor);
 static void houseKeeping(MESC_motor_typedef *_motor);
@@ -159,7 +158,7 @@ void MESCInit(MESC_motor_typedef *_motor)
 	_motor->meas.measure_current = I_MEASURE;
 	_motor->meas.measure_voltage = V_MEASURE;
 	_motor->meas.measure_closedloop_current = I_MEASURE_CLOSEDLOOP;
-	_motor->FOC.pwm_frequency = PWM_FREQUENCY;
+	_motor->FOC.base.pwm_frequency = PWM_FREQUENCY;
 	_motor->meas.hfi_voltage = HFI_VOLTAGE;
 
 	// Init Hall sensor
@@ -190,8 +189,8 @@ void MESCInit(MESC_motor_typedef *_motor)
 	// Init the Duty controller
 	_motor->FOC.Duty_scaler = 1.0f; // We want this to be 1.0f for everything except duty control mode.
 	// Init the PLL values
-	_motor->FOC.PLL_kp = PLL_KP;
-	_motor->FOC.PLL_ki = PLL_KI;
+	_motor->FOC.base.PLL_kp = PLL_KP;
+	_motor->FOC.base.PLL_ki = PLL_KI;
 	//	//Init the POS values
 	_motor->pos.Kp = POS_KP;
 	_motor->pos.Ki = POS_KI;
@@ -458,14 +457,14 @@ void fastLoop(MESC_motor_typedef *_motor)
 			{
 				_motor->FOC.flux_a = HALL_IIRN * _motor->FOC.flux_a + HALL_IIR * _motor->m.hall_flux[_motor->hall.current_hall_state - 1][0];
 				_motor->FOC.flux_b = HALL_IIRN * _motor->FOC.flux_b + HALL_IIR * _motor->m.hall_flux[_motor->hall.current_hall_state - 1][1];
-				if (fabsf(_motor->FOC.Vdq.q - _motor->m.R * _motor->FOC.Idq_smoothed.q) > HALL_VOLTAGE_THRESHOLD)
+				if (fabsf(_motor->FOC.base.Vdq.q - _motor->m.R * _motor->FOC.base.Idq_smoothed.q) > HALL_VOLTAGE_THRESHOLD)
 				{
 					flux_observer(_motor); // For some reason, this does not seem to work well at stationary;
 					// it results in vibrations at standstill, although it smooths the transition. Therefore, start it a bit later.
 				}
 				else
 				{
-					_motor->FOC.FOCAngle = (uint16_t)(32768.0f + 10430.0f * fast_atan2(_motor->FOC.flux_b, _motor->FOC.flux_a)) - 32768;
+					_motor->FOC.base.FOCAngle = (uint16_t)(32768.0f + 10430.0f * fast_atan2(_motor->FOC.flux_b, _motor->FOC.flux_a)) - 32768;
 				}
 			}
 			else if (_motor->FOC.enc_start_now)
@@ -485,7 +484,7 @@ void fastLoop(MESC_motor_typedef *_motor)
 			//			writePWM(_motor);
 			break;
 		case MOTOR_SENSOR_MODE_HALL:
-			_motor->FOC.inject = 0;
+			_motor->hfi.inject = 0;
 			hallAngleEstimator();
 			angleObserver(_motor);
 			MESCFOC(_motor);
@@ -499,13 +498,13 @@ void fastLoop(MESC_motor_typedef *_motor)
 			break;
 		case MOTOR_SENSOR_MODE_ABSOLUTE_ENCODER:
 			_motor->FOC.enc_period_count++;
-			_motor->FOC.FOCAngle = _motor->FOC.enc_angle + (uint16_t)((float)(_motor->FOC.enc_period_count) * (float)_motor->FOC.enc_pwm_step);
+			_motor->FOC.base.FOCAngle = _motor->FOC.enc_angle + (uint16_t)((float)(_motor->FOC.enc_period_count) * (float)_motor->FOC.enc_pwm_step);
 			MESCFOC(_motor);
 			//			writePWM(_motor);
 			break;
 		case MOTOR_SENSOR_MODE_INCREMENTAL_ENCODER:
 			getIncEncAngle(_motor);
-			_motor->FOC.FOCAngle = _motor->FOC.enc_angle;
+			_motor->FOC.base.FOCAngle = _motor->FOC.enc_angle;
 			MESCFOC(_motor);
 			//			writePWM(_motor);
 			break;
@@ -533,12 +532,12 @@ void fastLoop(MESC_motor_typedef *_motor)
 		}
 		else if ((_motor->MotorSensorMode == MOTOR_SENSOR_MODE_ABSOLUTE_ENCODER))
 		{
-			_motor->FOC.FOCAngle = _motor->FOC.enc_angle;
+			_motor->FOC.base.FOCAngle = _motor->FOC.enc_angle;
 		}
 		else if ((_motor->MotorSensorMode == MOTOR_SENSOR_MODE_INCREMENTAL_ENCODER))
 		{
 			getIncEncAngle(_motor);
-			_motor->FOC.FOCAngle = _motor->FOC.enc_angle;
+			_motor->FOC.base.FOCAngle = _motor->FOC.enc_angle;
 		}
 #endif
 
@@ -651,57 +650,57 @@ void fastLoop(MESC_motor_typedef *_motor)
 			if (_motor->MotorSensorMode == MOTOR_SENSOR_MODE_INCREMENTAL_ENCODER)
 			{
 				getIncEncAngle(_motor);
-				_motor->FOC.FOCAngle = _motor->FOC.enc_angle;
-				//     		  if((_motor->FOC.parkangle-_motor->FOC.FOCAngle)>16384){
-				//     			  if((_motor->FOC.parkangle-_motor->FOC.FOCAngle)>32768){
-				//    			  _motor->FOC.parkangle = _motor->FOC.FOCAngle+16384;
+				_motor->FOC.base.FOCAngle = _motor->FOC.enc_angle;
+				//     		  if((_motor->FOC.parkangle-_motor->FOC.base.FOCAngle)>16384){
+				//     			  if((_motor->FOC.parkangle-_motor->FOC.base.FOCAngle)>32768){
+				//    			  _motor->FOC.parkangle = _motor->FOC.base.FOCAngle+16384;
 				//     			  }
 				//    		  }
-				//     		  if((_motor->FOC.FOCAngle-_motor->FOC.parkangle)>16384){
-				//    			  if((_motor->FOC.FOCAngle-_motor->FOC.parkangle)<32767){
-				//    				  _motor->FOC.parkangle = _motor->FOC.FOCAngle-16384;
+				//     		  if((_motor->FOC.base.FOCAngle-_motor->FOC.parkangle)>16384){
+				//    			  if((_motor->FOC.base.FOCAngle-_motor->FOC.parkangle)<32767){
+				//    				  _motor->FOC.parkangle = _motor->FOC.base.FOCAngle-16384;
 				//    			  }
 				//    		  }
-				diff = (int)(_motor->FOC.FOCAngle - _motor->FOC.parkangle);
+				diff = (int)(_motor->FOC.base.FOCAngle - _motor->FOC.parkangle);
 				if (abs(diff) > 16384)
 				{
 					if (diff < 0)
 					{
-						_motor->FOC.parkangle = _motor->FOC.FOCAngle + 16000;
+						_motor->FOC.parkangle = _motor->FOC.base.FOCAngle + 16000;
 						__NOP();
 					}
 					else
 					{
-						_motor->FOC.parkangle = _motor->FOC.FOCAngle - 16000;
+						_motor->FOC.parkangle = _motor->FOC.base.FOCAngle - 16000;
 						__NOP();
 					}
 				}
 				if (abs(diff) < 8000)
 				{
-					_motor->FOC.Vdq.q = 0.0f;
-					_motor->FOC.Vdq.d = 0.0f;
+					_motor->FOC.base.Vdq.q = 0.0f;
+					_motor->FOC.base.Vdq.d = 0.0f;
 					_motor->FOC.park_current_now = 0.0f;
 				}
 				else
 				{
-					_motor->FOC.Idq_req.q = -_motor->FOC.park_current * (float)diff / (float)8192; // Fill with some PID logic
-					_motor->FOC.Idq_req.d = 0.0f;												   //
+					_motor->FOC.base.Idq_req.q = -_motor->FOC.park_current * (float)diff / (float)8192; // Fill with some PID logic
+					_motor->FOC.base.Idq_req.d = 0.0f;												   //
 					if (diff > 0)
 					{
-						_motor->FOC.Idq_req.q = _motor->FOC.Idq_req.q + _motor->FOC.park_current;
+						_motor->FOC.base.Idq_req.q = _motor->FOC.base.Idq_req.q + _motor->FOC.park_current;
 					}
 					else
 					{
-						_motor->FOC.Idq_req.q = _motor->FOC.Idq_req.q - _motor->FOC.park_current;
+						_motor->FOC.base.Idq_req.q = _motor->FOC.base.Idq_req.q - _motor->FOC.park_current;
 					}
 					MESCFOC(_motor);
-					_motor->FOC.park_current_now = _motor->FOC.Idq_req.q;
+					_motor->FOC.park_current_now = _motor->FOC.base.Idq_req.q;
 				}
 			}
 			else
 			{
-				_motor->FOC.Vdq.q = 0.0f;
-				_motor->FOC.Vdq.d = 0.0f;
+				_motor->FOC.base.Vdq.q = 0.0f;
+				_motor->FOC.base.Vdq.d = 0.0f;
 				_motor->FOC.park_current_now = 0.0f;
 			}
 		}
@@ -731,10 +730,10 @@ void fastLoop(MESC_motor_typedef *_motor)
 #endif
 
 	// RunPLL for all angle options
-	_motor->FOC.PLL_angle = _motor->FOC.PLL_angle + (int16_t)_motor->FOC.PLL_int + (int16_t)_motor->FOC.PLL_error;
-	_motor->FOC.PLL_error = _motor->FOC.PLL_kp * (int16_t)(_motor->FOC.FOCAngle - (_motor->FOC.PLL_angle & 0xFFFF));
-	_motor->FOC.PLL_int = _motor->FOC.PLL_int + _motor->FOC.PLL_ki * _motor->FOC.PLL_error;
-	_motor->FOC.eHz = _motor->FOC.PLL_int * _motor->FOC.pwm_frequency * 0.00001526f; // 1/65536
+	_motor->FOC.base.PLL_angle = _motor->FOC.base.PLL_angle + (int16_t)_motor->FOC.base.PLL_int + (int16_t)_motor->FOC.base.PLL_error;
+	_motor->FOC.base.PLL_error = _motor->FOC.base.PLL_kp * (int16_t)(_motor->FOC.base.FOCAngle - (_motor->FOC.base.PLL_angle & 0xFFFF));
+	_motor->FOC.base.PLL_int = _motor->FOC.base.PLL_int + _motor->FOC.base.PLL_ki * _motor->FOC.base.PLL_error;
+	_motor->FOC.eHz = _motor->FOC.base.PLL_int * _motor->FOC.base.pwm_frequency * 0.00001526f; // 1/65536
 
 #ifdef LOGGING
 	if (lognow)
@@ -810,8 +809,8 @@ float maxIgamma;
 uint16_t phasebalance;
 void ADCConversion(MESC_motor_typedef *_motor)
 {
-	_motor->FOC.Idq_smoothed.d = (_motor->FOC.Idq_smoothed.d * 99.0f + _motor->FOC.Idq.d) * 0.01f;
-	_motor->FOC.Idq_smoothed.q = (_motor->FOC.Idq_smoothed.q * 99.0f + _motor->FOC.Idq.q) * 0.01f;
+	_motor->FOC.base.Idq_smoothed.d = (_motor->FOC.base.Idq_smoothed.d * 99.0f + _motor->FOC.base.Idq.d) * 0.01f;
+	_motor->FOC.base.Idq_smoothed.q = (_motor->FOC.base.Idq_smoothed.q * 99.0f + _motor->FOC.base.Idq.q) * 0.01f;
 
 	getRawADC(_motor);
 
@@ -867,8 +866,8 @@ void ADCConversion(MESC_motor_typedef *_motor)
 #endif
 
 #ifdef STEPPER_MOTOR // Skip the Clarke transform
-	_motor->FOC.Iab.a = _motor->Conv.Iu;
-	_motor->FOC.Iab.b = _motor->Conv.Iv;
+	_motor->FOC.base.Iab.a = _motor->Conv.Iu;
+	_motor->FOC.base.Iab.b = _motor->Conv.Iv;
 #else
 
 	// Power Variant Clark transform
@@ -878,59 +877,59 @@ void ADCConversion(MESC_motor_typedef *_motor)
 	{
 	case U:
 		// Clark using phase V and W
-		_motor->FOC.Iab.a = -_motor->Conv.Iv -
+		_motor->FOC.base.Iab.a = -_motor->Conv.Iv -
 							_motor->Conv.Iw;
-		_motor->FOC.Iab.b =
+		_motor->FOC.base.Iab.b =
 			one_on_sqrt3 * _motor->Conv.Iv -
 			one_on_sqrt3 * _motor->Conv.Iw;
 		break;
 	case V:
 		// Clark using phase U and W
-		_motor->FOC.Iab.a = _motor->Conv.Iu;
-		_motor->FOC.Iab.b =
+		_motor->FOC.base.Iab.a = _motor->Conv.Iu;
+		_motor->FOC.base.Iab.b =
 			-one_on_sqrt3 * _motor->Conv.Iu -
 			two_on_sqrt3 * _motor->Conv.Iw;
 		break;
 	case W:
 		// Clark using phase U and V
-		_motor->FOC.Iab.a = _motor->Conv.Iu;
-		_motor->FOC.Iab.b =
+		_motor->FOC.base.Iab.a = _motor->Conv.Iu;
+		_motor->FOC.base.Iab.b =
 			two_on_sqrt3 * _motor->Conv.Iv +
 			one_on_sqrt3 * _motor->Conv.Iu;
 		break;
 	case N:
 #ifdef USE_HIGHHOPES_PHASE_BALANCING
-		_motor->FOC.Iab.g = 0.33f * (_motor->Conv.Iu + _motor->Conv.Iv + _motor->Conv.Iw);
+		_motor->FOC.base.Iab.g = 0.33f * (_motor->Conv.Iu + _motor->Conv.Iv + _motor->Conv.Iw);
 		//		if(phasebalance){
-		_motor->Conv.Iu = _motor->Conv.Iu - _motor->FOC.Iab.g;
-		_motor->Conv.Iv = _motor->Conv.Iv - _motor->FOC.Iab.g;
-		_motor->Conv.Iw = _motor->Conv.Iw - _motor->FOC.Iab.g;
+		_motor->Conv.Iu = _motor->Conv.Iu - _motor->FOC.base.Iab.g;
+		_motor->Conv.Iv = _motor->Conv.Iv - _motor->FOC.base.Iab.g;
+		_motor->Conv.Iw = _motor->Conv.Iw - _motor->FOC.base.Iab.g;
 		//		}
-		if (fabs(_motor->FOC.Iab.g) > fabs(maxIgamma))
+		if (fabs(_motor->FOC.base.Iab.g) > fabs(maxIgamma))
 		{
-			maxIgamma = _motor->FOC.Iab.g;
+			maxIgamma = _motor->FOC.base.Iab.g;
 		}
-		if (_motor->FOC.Vdq.q < 2.0f)
+		if (_motor->FOC.base.Vdq.q < 2.0f)
 		{ // Reset it to reject accumulated random noise and enable multiple goes
 			maxIgamma = 0.0f;
 		}
 #endif
 		// Do the full transform
-		_motor->FOC.Iab.a =
+		_motor->FOC.base.Iab.a =
 			0.66666f * _motor->Conv.Iu -
 			0.33333f * _motor->Conv.Iv -
 			0.33333f * _motor->Conv.Iw;
-		_motor->FOC.Iab.b =
+		_motor->FOC.base.Iab.b =
 			one_on_sqrt3 * _motor->Conv.Iv -
 			one_on_sqrt3 * _motor->Conv.Iw;
 		break;
 	} // End of phase selection switch
 #endif
 	// Park
-	_motor->FOC.Idq.d = _motor->FOC.sincosangle.cos * _motor->FOC.Iab.a +
-						_motor->FOC.sincosangle.sin * _motor->FOC.Iab.b;
-	_motor->FOC.Idq.q = _motor->FOC.sincosangle.cos * _motor->FOC.Iab.b -
-						_motor->FOC.sincosangle.sin * _motor->FOC.Iab.a;
+	_motor->FOC.base.Idq.d = _motor->FOC.base.sincosangle.cos * _motor->FOC.base.Iab.a +
+						_motor->FOC.base.sincosangle.sin * _motor->FOC.base.Iab.b;
+	_motor->FOC.base.Idq.q = _motor->FOC.base.sincosangle.cos * _motor->FOC.base.Iab.b -
+						_motor->FOC.base.sincosangle.sin * _motor->FOC.base.Iab.a;
 }
 
 void ADCPhaseConversion(MESC_motor_typedef *_motor)
@@ -960,14 +959,14 @@ void flux_observer_V2(MESC_motor_typedef *_motor)
 		7) Convert fluxes from dq frame to ab frame overwriting fluxa and fluxb
 
 	*/
-	fluxa = fluxa + (_motor->FOC.Vab.a - _motor->FOC.Iab.a * _motor->m.R) * _motor->FOC.pwm_period;
-	fluxb = fluxb + (_motor->FOC.Vab.b - _motor->FOC.Iab.b * _motor->m.R) * _motor->FOC.pwm_period;
+	fluxa = fluxa + (_motor->FOC.base.Vab.a - _motor->FOC.base.Iab.a * _motor->m.R) * _motor->FOC.pwm_period;
+	fluxb = fluxb + (_motor->FOC.base.Vab.b - _motor->FOC.base.Iab.b * _motor->m.R) * _motor->FOC.pwm_period;
 
 	// Park transform
-	fluxd = _motor->FOC.sincosangle.cos * fluxa +
-			_motor->FOC.sincosangle.sin * fluxb;
-	fluxq = _motor->FOC.sincosangle.cos * fluxb -
-			_motor->FOC.sincosangle.sin * fluxa;
+	fluxd = _motor->FOC.base.sincosangle.cos * fluxa +
+			_motor->FOC.base.sincosangle.sin * fluxb;
+	fluxq = _motor->FOC.base.sincosangle.cos * fluxb -
+			_motor->FOC.base.sincosangle.sin * fluxa;
 
 	// This is not part of the final version
 	if (fluxa > _motor->FOC.flux_observed)
@@ -1028,30 +1027,30 @@ void flux_observer(MESC_motor_typedef *_motor)
 	// the angle is then the arctangent of the integrals shifted 180 degrees
 #ifdef USE_SALIENT_OBSERVER
 	float La, Lb;
-	getLabFast(_motor->FOC.FOCAngle, _motor->m.L_D, _motor->m.L_QD, &La, &Lb);
+	getLabFast(_motor->FOC.base.FOCAngle, _motor->m.L_D, _motor->m.L_QD, &La, &Lb);
 
 	_motor->FOC.flux_a = _motor->FOC.flux_a +
-						 (_motor->FOC.Vab.a - _motor->m.R * _motor->FOC.Iab.a) * _motor->FOC.pwm_period -
-						 La * (_motor->FOC.Iab.a - _motor->FOC.Ia_last) - // Salient inductance NOW
-						 _motor->FOC.Iab.a * (La - La_last);			  // Differential of phi = Li -> Ldi/dt+idL/dt
+						 (_motor->FOC.base.Vab.a - _motor->m.R * _motor->FOC.base.Iab.a) * _motor->FOC.pwm_period -
+						 La * (_motor->FOC.base.Iab.a - _motor->FOC.Ia_last) - // Salient inductance NOW
+						 _motor->FOC.base.Iab.a * (La - La_last);			  // Differential of phi = Li -> Ldi/dt+idL/dt
 	_motor->FOC.flux_b = _motor->FOC.flux_b +
-						 (_motor->FOC.Vab.b - _motor->m.R * _motor->FOC.Iab.b) * _motor->FOC.pwm_period -
-						 Lb * (_motor->FOC.Iab.b - _motor->FOC.Ib_last) -
-						 _motor->FOC.Iab.b * (Lb - Lb_last);
+						 (_motor->FOC.base.Vab.b - _motor->m.R * _motor->FOC.base.Iab.b) * _motor->FOC.pwm_period -
+						 Lb * (_motor->FOC.base.Iab.b - _motor->FOC.Ib_last) -
+						 _motor->FOC.base.Iab.b * (Lb - Lb_last);
 	// Store the inductances
 	La_last = La;
 	Lb_last = Lb;
 #else
 	_motor->FOC.flux_a =
-		_motor->FOC.flux_a + (_motor->FOC.Vab.a - _motor->m.R * _motor->FOC.Iab.a) * _motor->FOC.pwm_period -
-		_motor->m.L_D * (_motor->FOC.Iab.a - _motor->FOC.Ia_last);
+		_motor->FOC.flux_a + (_motor->FOC.base.Vab.a - _motor->m.R * _motor->FOC.base.Iab.a) * _motor->FOC.pwm_period -
+		_motor->m.L_D * (_motor->FOC.base.Iab.a - _motor->FOC.Ia_last);
 	_motor->FOC.flux_b =
-		_motor->FOC.flux_b + (_motor->FOC.Vab.b - _motor->m.R * _motor->FOC.Iab.b) * _motor->FOC.pwm_period -
-		_motor->m.L_D * (_motor->FOC.Iab.b - _motor->FOC.Ib_last);
+		_motor->FOC.flux_b + (_motor->FOC.base.Vab.b - _motor->m.R * _motor->FOC.base.Iab.b) * _motor->FOC.pwm_period -
+		_motor->m.L_D * (_motor->FOC.base.Iab.b - _motor->FOC.Ib_last);
 #endif
 	// Store the currents
-	_motor->FOC.Ia_last = _motor->FOC.Iab.a;
-	_motor->FOC.Ib_last = _motor->FOC.Iab.b;
+	_motor->FOC.Ia_last = _motor->FOC.base.Iab.a;
+	_motor->FOC.Ib_last = _motor->FOC.base.Iab.b;
 
 #ifdef USE_NONLINEAR_OBSERVER_CENTERING
 	/// Try directly applying the centering using the same method as the flux linkage observer
@@ -1078,15 +1077,15 @@ void flux_observer(MESC_motor_typedef *_motor)
 	}
 #endif
 
-	if (_motor->FOC.inject == 0)
+	if (_motor->hfi.inject == 0)
 	{
-		_motor->FOC.FOCAngle = (uint16_t)(32768.0f + 10430.0f * fast_atan2(_motor->FOC.flux_b, _motor->FOC.flux_a)) - 32768;
+		_motor->FOC.base.FOCAngle = (uint16_t)(32768.0f + 10430.0f * fast_atan2(_motor->FOC.flux_b, _motor->FOC.flux_a)) - 32768;
 	}
 
 #ifdef TRACK_ENCODER_OBSERVER_ERROR
 	// This does not apply the encoder angle,
 	// It tracks the difference between the encoder and the observer.
-	_motor->FOC.enc_obs_angle = _motor->FOC.FOCAngle - _motor->FOC.enc_angle;
+	_motor->FOC.enc_obs_angle = _motor->FOC.base.FOCAngle - _motor->FOC.enc_angle;
 #endif
 }
 
@@ -1155,14 +1154,14 @@ void hallAngleEstimator(MESC_motor_typedef *_motor)
 		if ((a = _motor->hall.current_hall_angle - _motor->hall.last_hall_angle) < 32000) // Forwards
 		{
 			_motor->hall.hall_error =
-				_motor->FOC.FOCAngle - _motor->m.hall_table[_motor->hall.current_hall_state - 1][0];
+				_motor->FOC.base.FOCAngle - _motor->m.hall_table[_motor->hall.current_hall_state - 1][0];
 			_motor->hall.dir = 1.0f;
 			// _motor->FOC.HallAngle = _motor->FOC.HallAngle - 5460;
 		}
 		else // Backwards
 		{
 			_motor->hall.hall_error =
-				_motor->FOC.FOCAngle - _motor->m.hall_table[_motor->hall.current_hall_state - 1][1];
+				_motor->FOC.base.FOCAngle - _motor->m.hall_table[_motor->hall.current_hall_state - 1][1];
 			_motor->hall.dir = -1.0f;
 			// _motor->FOC.HallAngle = _motor->FOC.HallAngle + 5460;
 		}
@@ -1204,7 +1203,7 @@ void angleObserver(MESC_motor_typedef *_motor)
 
 	if (_motor->hall.ticks_since_last_observer_change <= 2.0f * _motor->hall.last_observer_period)
 	{
-		/*      _motor->FOC.FOCAngle = _motor->FOC.FOCAngle + (uint16_t)(dir*angle_step
+		/*      _motor->FOC.base.FOCAngle = _motor->FOC.base.FOCAngle + (uint16_t)(dir*angle_step
 		   + one_on_last_observer_period * (-0.9f * hall_error)); //Does not
 		   work...
 			 //Why?
@@ -1213,21 +1212,21 @@ void angleObserver(MESC_motor_typedef *_motor)
 		{ // Apply a gain to the error as well as the feed forward
 			// from the last hall period. Gain of 0.9-1.1 seems to work
 			// well when using corrected hall positions and spacings
-			_motor->FOC.FOCAngle =
-				_motor->FOC.FOCAngle +
+			_motor->FOC.base.FOCAngle =
+				_motor->FOC.base.FOCAngle +
 				(uint16_t)(_motor->hall.angle_step - _motor->hall.one_on_last_observer_period * _motor->hall.hall_error);
 			// one_on_last_observer_period * (-0.2f * hall_error));
 		}
 		else if (_motor->hall.dir < 0.0f)
 		{
-			_motor->FOC.FOCAngle =
-				_motor->FOC.FOCAngle +
+			_motor->FOC.base.FOCAngle =
+				_motor->FOC.base.FOCAngle +
 				(uint16_t)(-_motor->hall.angle_step +
 						   _motor->hall.one_on_last_observer_period * (-0.9f * _motor->hall.hall_error));
 			// Also does not work,
 			// Why??
-			_motor->FOC.FOCAngle =
-				_motor->FOC.FOCAngle -
+			_motor->FOC.base.FOCAngle =
+				_motor->FOC.base.FOCAngle -
 				(uint16_t)(_motor->hall.angle_step +
 						   _motor->hall.one_on_last_observer_period * (0.2f * _motor->hall.hall_error));
 		}
@@ -1238,14 +1237,14 @@ void angleObserver(MESC_motor_typedef *_motor)
 		_motor->hall.last_observer_period = 1500.0f; //(ticks_since_last_hall_change);
 		_motor->hall.one_on_last_observer_period =
 			1.0f / _motor->hall.last_observer_period; // / ticks_since_last_hall_change;
-		_motor->FOC.FOCAngle = _motor->hall.current_hall_angle;
+		_motor->FOC.base.FOCAngle = _motor->hall.current_hall_angle;
 	}
 }
 
 void OLGenerateAngle(MESC_motor_typedef *_motor)
 {
-	//_motor->FOC.PLL_int = 0.5f*_motor->FOC.openloop_step;
-	_motor->FOC.FOCAngle = _motor->FOC.FOCAngle + _motor->FOC.openloop_step;
+	//_motor->FOC.base.PLL_int = 0.5f*_motor->FOC.openloop_step;
+	_motor->FOC.base.FOCAngle = _motor->FOC.base.FOCAngle + _motor->FOC.openloop_step;
 	// ToDo
 }
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1258,39 +1257,39 @@ void MESCFOC(MESC_motor_typedef *_motor)
 	// Here we are going to do a PID loop to control the dq currents, converting
 	// Idq into Vdq Calculate the errors
 	static MESCiq_s Idq_err;
-	Idq_err.q = (_motor->FOC.Idq_req.q - _motor->FOC.Idq.q) * _motor->FOC.Iq_pgain;
+	Idq_err.q = (_motor->FOC.base.Idq_req.q - _motor->FOC.base.Idq.q) * _motor->FOC.Iq_pgain;
 #if defined(USE_FIELD_WEAKENING) || defined(USE_FIELD_WEAKENINGV2)
-	if ((_motor->FOC.FW_current < _motor->FOC.Idq_req.d) && (_motor->MotorState == MOTOR_STATE_RUN))
+	if ((_motor->FOC.FW_current < _motor->FOC.base.Idq_req.d) && (_motor->MotorState == MOTOR_STATE_RUN))
 	{ // Field weakenning is -ve, but there may already be d-axis from the MTPA
-		Idq_err.d = (_motor->FOC.FW_current - _motor->FOC.Idq.d) * _motor->FOC.Id_pgain;
+		Idq_err.d = (_motor->FOC.FW_current - _motor->FOC.base.Idq.d) * _motor->FOC.Id_pgain;
 	}
 	else
 	{
-		Idq_err.d = (_motor->FOC.Idq_req.d - _motor->FOC.Idq.d) * _motor->FOC.Id_pgain;
+		Idq_err.d = (_motor->FOC.base.Idq_req.d - _motor->FOC.base.Idq.d) * _motor->FOC.Id_pgain;
 	}
 #else
-	Idq_err.d = (_motor->FOC.Idq_req.d - _motor->FOC.Idq.d) * _motor->FOC.Id_pgain;
+	Idq_err.d = (_motor->FOC.base.Idq_req.d - _motor->FOC.base.Idq.d) * _motor->FOC.Id_pgain;
 	// if we do not use the field weakening controller, we still want to control the d axis current...
 #endif
 
 	// Integral error
-	_motor->FOC.Idq_int_err.d =
-		_motor->FOC.Idq_int_err.d + _motor->FOC.Id_igain * Idq_err.d * _motor->FOC.pwm_period;
-	_motor->FOC.Idq_int_err.q =
-		_motor->FOC.Idq_int_err.q + _motor->FOC.Iq_igain * Idq_err.q * _motor->FOC.pwm_period;
+	_motor->FOC.base.Idq_int_err.d =
+		_motor->FOC.base.Idq_int_err.d + _motor->FOC.Id_igain * Idq_err.d * _motor->FOC.pwm_period;
+	_motor->FOC.base.Idq_int_err.q =
+		_motor->FOC.base.Idq_int_err.q + _motor->FOC.Iq_igain * Idq_err.q * _motor->FOC.pwm_period;
 	// Apply the integral gain at this stage to enable bounding it
 
 	// Apply the PID, and potentially smooth the output for noise - sudden
 	// changes in VDVQ may be undesirable for some motors. Integral error is
 	// pre-bounded to avoid integral windup, proportional gain needs to have
 	// effect even at max integral to stabilise and avoid trips
-	_motor->FOC.Vdq.d = Idq_err.d + _motor->FOC.Idq_int_err.d;
-	_motor->FOC.Vdq.q = Idq_err.q + _motor->FOC.Idq_int_err.q;
+	_motor->FOC.base.Vdq.d = Idq_err.d + _motor->FOC.base.Idq_int_err.d;
+	_motor->FOC.base.Vdq.q = Idq_err.q + _motor->FOC.base.Idq_int_err.q;
 
 	// Bounding final output
 
 #if defined(USE_SQRT_CIRCLE_LIM)
-	float Vmagnow2 = _motor->FOC.Vdq.d * _motor->FOC.Vdq.d + _motor->FOC.Vdq.q * _motor->FOC.Vdq.q;
+	float Vmagnow2 = _motor->FOC.base.Vdq.d * _motor->FOC.base.Vdq.d + _motor->FOC.base.Vdq.q * _motor->FOC.base.Vdq.q;
 	// Check if the vector length is greater than the available voltage
 	_motor->FOC.Voltage = sqrtf(Vmagnow2);
 	if (_motor->FOC.Voltage > _motor->FOC.Vmag_max)
@@ -1298,10 +1297,10 @@ void MESCFOC(MESC_motor_typedef *_motor)
 		// float Vmagnow = sqrtf(Vmagnow2);
 		float one_on_Vmagnow = 1.0f / _motor->FOC.Voltage;
 		float one_on_VmagnowxVmagmax = _motor->FOC.Vmag_max * one_on_Vmagnow;
-		_motor->FOC.Vdq.d = _motor->FOC.Vdq.d * one_on_VmagnowxVmagmax;
-		_motor->FOC.Vdq.q = _motor->FOC.Vdq.q * one_on_VmagnowxVmagmax;
-		_motor->FOC.Idq_int_err.d = _motor->FOC.Idq_int_err.d * one_on_VmagnowxVmagmax;
-		_motor->FOC.Idq_int_err.q = _motor->FOC.Idq_int_err.q * one_on_VmagnowxVmagmax;
+		_motor->FOC.base.Vdq.d = _motor->FOC.base.Vdq.d * one_on_VmagnowxVmagmax;
+		_motor->FOC.base.Vdq.q = _motor->FOC.base.Vdq.q * one_on_VmagnowxVmagmax;
+		_motor->FOC.base.Idq_int_err.d = _motor->FOC.base.Idq_int_err.d * one_on_VmagnowxVmagmax;
+		_motor->FOC.base.Idq_int_err.q = _motor->FOC.base.Idq_int_err.q * one_on_VmagnowxVmagmax;
 #ifdef USE_FIELD_WEAKENINGV2
 		// Preferable to use FWV2 with the D axis circle limiter,
 		// this allows the D current to ramp all the way to max, whereas
@@ -1315,9 +1314,9 @@ void MESCFOC(MESC_motor_typedef *_motor)
 	{
 		_motor->FOC.FW_current = 1.01f * _motor->FOC.FW_current + 0.0101f * _motor->FOC.FW_curr_max;
 	} // Unroll the exponential ramp up, with a small extra term to ensure we do not saturate the float
-	if (_motor->FOC.FW_current > _motor->FOC.Idq_req.d)
+	if (_motor->FOC.FW_current > _motor->FOC.base.Idq_req.d)
 	{
-		_motor->FOC.FW_current = _motor->FOC.Idq_req.d;
+		_motor->FOC.FW_current = _motor->FOC.base.Idq_req.d;
 	}
 	if (_motor->FOC.FW_current < -_motor->FOC.FW_curr_max)
 	{
@@ -1336,43 +1335,43 @@ void MESCFOC(MESC_motor_typedef *_motor)
 	// due to rapidly collapsing q-axis voltage. Therefore, this option will be allowed, but
 	//  with a limit of voltage angle 60degrees (sin60 = 0.866) from the rotor.
 
-	if (_motor->FOC.Vdq.d < -0.866f * _motor->FOC.Vmag_max)
+	if (_motor->FOC.base.Vdq.d < -0.866f * _motor->FOC.Vmag_max)
 	{														// Negative values of Vd - Normally Vd is -ve since it is driving field advance
-		_motor->FOC.Vdq.d = -0.866f * _motor->FOC.Vmag_max; // Hard clamp the Vd
-		if (_motor->FOC.Idq_int_err.d < _motor->FOC.Vdq.d)
+		_motor->FOC.base.Vdq.d = -0.866f * _motor->FOC.Vmag_max; // Hard clamp the Vd
+		if (_motor->FOC.base.Idq_int_err.d < _motor->FOC.base.Vdq.d)
 		{
-			_motor->FOC.Idq_int_err.d = _motor->FOC.Vdq.d; // Also clamp the integral to stop windup
+			_motor->FOC.base.Idq_int_err.d = _motor->FOC.base.Vdq.d; // Also clamp the integral to stop windup
 		}
 	}
-	else if (_motor->FOC.Vdq.d > 0.866f * _motor->FOC.Vmag_max)
+	else if (_motor->FOC.base.Vdq.d > 0.866f * _motor->FOC.Vmag_max)
 	{													   // Positive values of Vd
-		_motor->FOC.Vdq.d = 0.866f * _motor->FOC.Vmag_max; // Hard clamp the Vd
-		if (_motor->FOC.Idq_int_err.d > _motor->FOC.Vdq.d)
+		_motor->FOC.base.Vdq.d = 0.866f * _motor->FOC.Vmag_max; // Hard clamp the Vd
+		if (_motor->FOC.base.Idq_int_err.d > _motor->FOC.base.Vdq.d)
 		{
-			_motor->FOC.Idq_int_err.d = _motor->FOC.Vdq.d; // Also clamp the integral to stop windup
+			_motor->FOC.base.Idq_int_err.d = _motor->FOC.base.Vdq.d; // Also clamp the integral to stop windup
 		}
 	}
 
 	// Now we take care of the overall length of the voltage vector
-	float Vmagnow2 = _motor->FOC.Vdq.d * _motor->FOC.Vdq.d + _motor->FOC.Vdq.q * _motor->FOC.Vdq.q;
+	float Vmagnow2 = _motor->FOC.base.Vdq.d * _motor->FOC.base.Vdq.d + _motor->FOC.base.Vdq.q * _motor->FOC.base.Vdq.q;
 	_motor->FOC.Voltage = sqrtf(Vmagnow2);
 	if (_motor->FOC.Voltage > _motor->FOC.Vmag_max)
 	{
 		_motor->FOC.Voltage = _motor->FOC.Vmag_max;
-		if (_motor->FOC.Vdq.q > 0.0f)
+		if (_motor->FOC.base.Vdq.q > 0.0f)
 		{ // Positive Vq
-			_motor->FOC.Vdq.q = sqrtf(_motor->FOC.Vmag_max2 - _motor->FOC.Vdq.d * _motor->FOC.Vdq.d);
-			if (_motor->FOC.Idq_int_err.q > _motor->FOC.Vdq.q)
+			_motor->FOC.base.Vdq.q = sqrtf(_motor->FOC.Vmag_max2 - _motor->FOC.base.Vdq.d * _motor->FOC.base.Vdq.d);
+			if (_motor->FOC.base.Idq_int_err.q > _motor->FOC.base.Vdq.q)
 			{
-				_motor->FOC.Idq_int_err.q = _motor->FOC.Vdq.q;
+				_motor->FOC.base.Idq_int_err.q = _motor->FOC.base.Vdq.q;
 			}
 		}
 		else
 		{ // Negative Vq
-			_motor->FOC.Vdq.q = -sqrtf(_motor->FOC.Vmag_max2 - _motor->FOC.Vdq.d * _motor->FOC.Vdq.d);
-			if (_motor->FOC.Idq_int_err.q < _motor->FOC.Vdq.q)
+			_motor->FOC.base.Vdq.q = -sqrtf(_motor->FOC.Vmag_max2 - _motor->FOC.base.Vdq.d * _motor->FOC.base.Vdq.d);
+			if (_motor->FOC.base.Idq_int_err.q < _motor->FOC.base.Vdq.q)
 			{
-				_motor->FOC.Idq_int_err.q = _motor->FOC.Vdq.q;
+				_motor->FOC.base.Idq_int_err.q = _motor->FOC.base.Vdq.q;
 			}
 		}
 	}
@@ -1389,9 +1388,9 @@ void MESCFOC(MESC_motor_typedef *_motor)
 	{
 		_motor->FOC.FW_current = 1.01f * _motor->FOC.FW_current + 0.0101f * _motor->FOC.FW_curr_max;
 	} // Exponentially diverge from the FW current. Note that this exponential implemented opposite to the ramp up!
-	if (_motor->FOC.FW_current > _motor->FOC.Idq_req.d)
+	if (_motor->FOC.FW_current > _motor->FOC.base.Idq_req.d)
 	{
-		_motor->FOC.FW_current = _motor->FOC.Idq_req.d;
+		_motor->FOC.FW_current = _motor->FOC.base.Idq_req.d;
 	}
 	if (_motor->FOC.FW_current < -_motor->FOC.FW_curr_max)
 	{
@@ -1409,35 +1408,35 @@ void MESCFOC(MESC_motor_typedef *_motor)
 	//  cross coupling).
 
 	// Bounding integral
-	if (_motor->FOC.Idq_int_err.d > _motor->FOC.Vdint_max)
+	if (_motor->FOC.base.Idq_int_err.d > _motor->FOC.Vdint_max)
 	{
-		_motor->FOC.Idq_int_err.d = _motor->FOC.Vdint_max;
+		_motor->FOC.base.Idq_int_err.d = _motor->FOC.Vdint_max;
 	}
-	if (_motor->FOC.Idq_int_err.d < -_motor->FOC.Vdint_max)
+	if (_motor->FOC.base.Idq_int_err.d < -_motor->FOC.Vdint_max)
 	{
-		_motor->FOC.Idq_int_err.d = -_motor->FOC.Vdint_max;
+		_motor->FOC.base.Idq_int_err.d = -_motor->FOC.Vdint_max;
 	}
-	if (_motor->FOC.Idq_int_err.q > _motor->FOC.Vqint_max)
+	if (_motor->FOC.base.Idq_int_err.q > _motor->FOC.Vqint_max)
 	{
-		_motor->FOC.Idq_int_err.q = _motor->FOC.Vqint_max;
+		_motor->FOC.base.Idq_int_err.q = _motor->FOC.Vqint_max;
 	}
-	if (_motor->FOC.Idq_int_err.q < -_motor->FOC.Vqint_max)
+	if (_motor->FOC.base.Idq_int_err.q < -_motor->FOC.Vqint_max)
 	{
-		_motor->FOC.Idq_int_err.q = -_motor->FOC.Vqint_max;
+		_motor->FOC.base.Idq_int_err.q = -_motor->FOC.Vqint_max;
 	}
 	// Bounding output
-	if (_motor->FOC.Vdq.d > _motor->FOC.Vd_max)
-		(_motor->FOC.Vdq.d = _motor->FOC.Vd_max);
-	if (_motor->FOC.Vdq.d < -_motor->FOC.Vd_max)
-		(_motor->FOC.Vdq.d = -_motor->FOC.Vd_max);
-	if (_motor->FOC.Vdq.q > _motor->FOC.Vq_max)
-		(_motor->FOC.Vdq.q = _motor->FOC.Vq_max);
-	if (_motor->FOC.Vdq.q < -_motor->FOC.Vq_max)
-		(_motor->FOC.Vdq.q = -_motor->FOC.Vq_max);
+	if (_motor->FOC.base.Vdq.d > _motor->FOC.Vd_max)
+		(_motor->FOC.base.Vdq.d = _motor->FOC.Vd_max);
+	if (_motor->FOC.base.Vdq.d < -_motor->FOC.Vd_max)
+		(_motor->FOC.base.Vdq.d = -_motor->FOC.Vd_max);
+	if (_motor->FOC.base.Vdq.q > _motor->FOC.Vq_max)
+		(_motor->FOC.base.Vdq.q = _motor->FOC.Vq_max);
+	if (_motor->FOC.base.Vdq.q < -_motor->FOC.Vq_max)
+		(_motor->FOC.base.Vdq.q = -_motor->FOC.Vq_max);
 #endif
 #ifdef USE_FIELD_WEAKENING
 	// Calculate the module of voltage applied,
-	Vmagnow2 = _motor->FOC.Vdq.d * _motor->FOC.Vdq.d + _motor->FOC.Vdq.q * _motor->FOC.Vdq.q; // Need to recalculate this since limitation has maybe been applied
+	Vmagnow2 = _motor->FOC.base.Vdq.d * _motor->FOC.base.Vdq.d + _motor->FOC.base.Vdq.q * _motor->FOC.base.Vdq.q; // Need to recalculate this since limitation has maybe been applied
 	// Apply a linear slope from the threshold to the max module. Similar methodology to VESC, but run in fast loop
 	// Step towards with exponential smoother
 	if (Vmagnow2 > (_motor->FOC.FW_threshold * _motor->FOC.FW_threshold))
@@ -1468,42 +1467,42 @@ void writePWM(MESC_motor_typedef *_motor)
 {
 	float Vd, Vq;
 
-	Vd = _motor->FOC.Vdq.d + _motor->FOC.Vd_injectionV;
-	Vq = _motor->FOC.Vdq.q + _motor->FOC.Vq_injectionV;
+	Vd = _motor->FOC.base.Vdq.d + _motor->hfi.Vd_injectionV;
+	Vq = _motor->FOC.base.Vdq.q + _motor->hfi.Vq_injectionV;
 
 	// Now we update the sin and cos values, since when we do the inverse
 	// transforms, we would like to use the most up to date versions(or even the
 	// next predicted version...)
 #ifdef INTERPOLATE_V7_ANGLE
-	if ((fabsf(_motor->FOC.eHz) > 0.005f * _motor->FOC.pwm_frequency) && (_motor->FOC.inject == 0))
+	if ((fabsf(_motor->FOC.eHz) > 0.005f * _motor->FOC.base.pwm_frequency) && (_motor->hfi.inject == 0))
 	{
 		// Only run it when there is likely to be good speed measurement stability and
 		// actual utility in doing it. At low speed, there is minimal benefit, and
 		// unstable speed estimation could make it worse.
 		// Presently, this causes issues with openloop iteration, and effectively doubles the speed. TBC
-		_motor->FOC.FOCAngle = _motor->FOC.FOCAngle + 0.5f * _motor->FOC.PLL_int;
+		_motor->FOC.base.FOCAngle = _motor->FOC.base.FOCAngle + 0.5f * _motor->FOC.base.PLL_int;
 	}
 #endif
-	sin_cos_fast(_motor->FOC.FOCAngle, &_motor->FOC.sincosangle.sin, &_motor->FOC.sincosangle.cos);
+	sin_cos_fast(_motor->FOC.base.FOCAngle, &_motor->FOC.base.sincosangle.sin, &_motor->FOC.base.sincosangle.cos);
 
 	// Inverse Park transform
-	_motor->FOC.Vab.a = _motor->FOC.sincosangle.cos * Vd -
-						_motor->FOC.sincosangle.sin * Vq;
-	_motor->FOC.Vab.b = _motor->FOC.sincosangle.sin * Vd +
-						_motor->FOC.sincosangle.cos * Vq;
+	_motor->FOC.base.Vab.a = _motor->FOC.base.sincosangle.cos * Vd -
+						_motor->FOC.base.sincosangle.sin * Vq;
+	_motor->FOC.base.Vab.b = _motor->FOC.base.sincosangle.sin * Vd +
+						_motor->FOC.base.sincosangle.cos * Vq;
 #ifdef STEPPER_MOTOR // Skip inverse Clark
 
-	_motor->mtimer->Instance->CCR1 = (uint16_t)(1.0f * _motor->FOC.Vab_to_PWM * (_motor->FOC.Vab.a) + _motor->FOC.PWMmid);
-	_motor->mtimer->Instance->CCR2 = (uint16_t)(-1.0f * _motor->FOC.Vab_to_PWM * (_motor->FOC.Vab.a) + _motor->FOC.PWMmid);
-	_motor->mtimer->Instance->CCR3 = (uint16_t)(1.0f * _motor->FOC.Vab_to_PWM * (_motor->FOC.Vab.b) + _motor->FOC.PWMmid);
-	_motor->mtimer->Instance->CCR4 = (uint16_t)(-1.0f * _motor->FOC.Vab_to_PWM * (_motor->FOC.Vab.b) + _motor->FOC.PWMmid);
+	_motor->mtimer->Instance->CCR1 = (uint16_t)(1.0f * _motor->FOC.Vab_to_PWM * (_motor->FOC.base.Vab.a) + _motor->FOC.PWMmid);
+	_motor->mtimer->Instance->CCR2 = (uint16_t)(-1.0f * _motor->FOC.Vab_to_PWM * (_motor->FOC.base.Vab.a) + _motor->FOC.PWMmid);
+	_motor->mtimer->Instance->CCR3 = (uint16_t)(1.0f * _motor->FOC.Vab_to_PWM * (_motor->FOC.base.Vab.b) + _motor->FOC.PWMmid);
+	_motor->mtimer->Instance->CCR4 = (uint16_t)(-1.0f * _motor->FOC.Vab_to_PWM * (_motor->FOC.base.Vab.b) + _motor->FOC.PWMmid);
 
 #else
 	// Inverse Clark transform - power variant
-	_motor->FOC.inverterVoltage[0] = _motor->FOC.Vab.a;
+	_motor->FOC.inverterVoltage[0] = _motor->FOC.base.Vab.a;
 	_motor->FOC.inverterVoltage[1] = -0.5f * _motor->FOC.inverterVoltage[0];
-	_motor->FOC.inverterVoltage[2] = _motor->FOC.inverterVoltage[1] - sqrt3_on_2 * _motor->FOC.Vab.b;
-	_motor->FOC.inverterVoltage[1] = _motor->FOC.inverterVoltage[1] + sqrt3_on_2 * _motor->FOC.Vab.b;
+	_motor->FOC.inverterVoltage[2] = _motor->FOC.inverterVoltage[1] - sqrt3_on_2 * _motor->FOC.base.Vab.b;
+	_motor->FOC.inverterVoltage[1] = _motor->FOC.inverterVoltage[1] + sqrt3_on_2 * _motor->FOC.base.Vab.b;
 
 	////////////////////////////////////////////////////////
 	// SVPM implementation
@@ -1695,11 +1694,11 @@ void measureResistance(MESC_motor_typedef *_motor)
 		phU_Enable(_motor);
 		phV_Enable(_motor);
 		phW_Enable(_motor);
-		_motor->FOC.Idq_req.d = _motor->meas.measure_current;
-		_motor->FOC.Idq_req.q = 0.0f;
-		_motor->FOC.FOCAngle = 0;
+		_motor->FOC.base.Idq_req.d = _motor->meas.measure_current;
+		_motor->FOC.base.Idq_req.q = 0.0f;
+		_motor->FOC.base.FOCAngle = 0;
 
-		_motor->FOC.inject = 0; // flag to not inject at SVPWM top
+		_motor->hfi.inject = 0; // flag to not inject at SVPWM top
 
 		MESCFOC(_motor);
 		//      writePWM(_motor);
@@ -1719,45 +1718,45 @@ void measureResistance(MESC_motor_typedef *_motor)
 
 	else if (_motor->meas.PWM_cycles < 35000)
 	{ // Align the rotor for ~1 second
-		_motor->FOC.Idq_req.d = _motor->meas.measure_current;
-		_motor->FOC.Idq_req.q = 0.0f;
+		_motor->FOC.base.Idq_req.d = _motor->meas.measure_current;
+		_motor->FOC.base.Idq_req.q = 0.0f;
 
-		_motor->FOC.inject = 0;
+		_motor->hfi.inject = 0;
 		MESCFOC(_motor);
 		//      writePWM(_motor);
 	}
 
 	else if (_motor->meas.PWM_cycles < 40000)
 	{ // Lower setpoint
-		_motor->FOC.Idq_req.d = 0.20f * _motor->meas.measure_current;
-		_motor->FOC.inject = 0;
+		_motor->FOC.base.Idq_req.d = 0.20f * _motor->meas.measure_current;
+		_motor->hfi.inject = 0;
 		MESCFOC(_motor);
 		//      writePWM(_motor);
 
-		_motor->meas.bottom_V = _motor->meas.bottom_V + _motor->FOC.Vdq.d;
-		_motor->meas.bottom_I = _motor->meas.bottom_I + _motor->FOC.Idq.d;
+		_motor->meas.bottom_V = _motor->meas.bottom_V + _motor->FOC.base.Vdq.d;
+		_motor->meas.bottom_I = _motor->meas.bottom_I + _motor->FOC.base.Idq.d;
 		_motor->meas.count_bottom++;
-		_motor->meas.Vd_temp = _motor->FOC.Vdq.d * 1.0f; // Store the voltage required for the low setpoint, to
+		_motor->meas.Vd_temp = _motor->FOC.base.Vdq.d * 1.0f; // Store the voltage required for the low setpoint, to
 														 // use as an offset for the inductance
 	}
 
 	else if (_motor->meas.PWM_cycles < 45000)
 	{ // Upper setpoint stabilisation
-		_motor->FOC.Idq_req.d = _motor->meas.measure_current;
-		_motor->FOC.inject = 0;
+		_motor->FOC.base.Idq_req.d = _motor->meas.measure_current;
+		_motor->hfi.inject = 0;
 		MESCFOC(_motor);
 		//      writePWM(_motor);
 	}
 
 	else if (_motor->meas.PWM_cycles < 50000)
 	{ // Upper setpoint
-		_motor->FOC.Idq_req.d = _motor->meas.measure_current;
-		_motor->FOC.inject = 0;
+		_motor->FOC.base.Idq_req.d = _motor->meas.measure_current;
+		_motor->hfi.inject = 0;
 		MESCFOC(_motor);
 		//      writePWM(_motor);
 
-		_motor->meas.top_V = _motor->meas.top_V + _motor->FOC.Vdq.d;
-		_motor->meas.top_I = _motor->meas.top_I + _motor->FOC.Idq.d;
+		_motor->meas.top_V = _motor->meas.top_V + _motor->FOC.base.Vdq.d;
+		_motor->meas.top_I = _motor->meas.top_I + _motor->FOC.base.Idq.d;
 		_motor->meas.count_top++;
 	}
 	else if (_motor->meas.PWM_cycles < 50001)
@@ -1767,12 +1766,12 @@ void measureResistance(MESC_motor_typedef *_motor)
 		_motor->m.R = (_motor->meas.top_V - _motor->meas.bottom_V) / (_motor->meas.top_I - _motor->meas.bottom_I);
 
 		// Initialise the variables for the next measurement
-		// Vd_temp = _motor->FOC.Vdq.d * 1.0f;  // Store the voltage required for the high setpoint, to
+		// Vd_temp = _motor->FOC.base.Vdq.d * 1.0f;  // Store the voltage required for the high setpoint, to
 		//  use as an offset for the inductance
 		_motor->meas.Vq_temp = 0.0f;
-		_motor->FOC.Vdq.q = 0.0f; //
-		_motor->FOC.Idq_int_err.d = 0.0f;
-		_motor->FOC.Idq_int_err.q = 0.0f;
+		_motor->FOC.base.Vdq.q = 0.0f; //
+		_motor->FOC.base.Idq_int_err.d = 0.0f;
+		_motor->FOC.base.Idq_int_err.q = 0.0f;
 		_motor->meas.count_top = 0.0f;
 		_motor->meas.count_bottom = 0.0f;
 		_motor->meas.top_I_L = 0.0f;
@@ -1785,21 +1784,21 @@ void measureResistance(MESC_motor_typedef *_motor)
 	{
 		// generateBreak();
 		_motor->HFIType = HFI_TYPE_SPECIAL;
-		_motor->FOC.inject = 1; // flag to the SVPWM writer to inject at top
-		_motor->FOC.special_injectionVd = _motor->meas.measure_voltage;
-		_motor->FOC.special_injectionVq = 0.0f;
+		_motor->hfi.inject = 1; // flag to the SVPWM writer to inject at top
+		_motor->hfi.special_injectionVd = _motor->meas.measure_voltage;
+		_motor->hfi.special_injectionVq = 0.0f;
 
-		_motor->FOC.Vdq.d = _motor->meas.Vd_temp;
-		_motor->FOC.Vdq.q = 0.0f;
+		_motor->FOC.base.Vdq.d = _motor->meas.Vd_temp;
+		_motor->FOC.base.Vdq.q = 0.0f;
 
-		if (_motor->FOC.inject_high_low_now == 1)
+		if (_motor->hfi.inject_high_low_now == 1)
 		{
-			_motor->meas.top_I_L = _motor->meas.top_I_L + _motor->FOC.Idq.d;
+			_motor->meas.top_I_L = _motor->meas.top_I_L + _motor->FOC.base.Idq.d;
 			_motor->meas.count_top++;
 		}
-		else if (_motor->FOC.inject_high_low_now == 0)
+		else if (_motor->hfi.inject_high_low_now == 0)
 		{
-			_motor->meas.bottom_I_L = _motor->meas.bottom_I_L + _motor->FOC.Idq.d;
+			_motor->meas.bottom_I_L = _motor->meas.bottom_I_L + _motor->FOC.base.Idq.d;
 			_motor->meas.count_bottom++;
 		}
 	}
@@ -1808,7 +1807,7 @@ void measureResistance(MESC_motor_typedef *_motor)
 	{
 		generateBreak(_motor);
 		_motor->m.L_D =
-			fabsf((_motor->FOC.special_injectionVd) /
+			fabsf((_motor->hfi.special_injectionVd) /
 				  ((_motor->meas.top_I_L - _motor->meas.bottom_I_L) / (_motor->meas.count_top * _motor->FOC.pwm_period)));
 		_motor->meas.top_I_Lq = 0.0f;
 		_motor->meas.bottom_I_Lq = 0.0f;
@@ -1827,20 +1826,20 @@ void measureResistance(MESC_motor_typedef *_motor)
 	else if (_motor->meas.PWM_cycles < 100003)
 	{
 		//			generateBreak();
-		_motor->FOC.special_injectionVd = 0.0f;
-		_motor->FOC.special_injectionVq = _motor->meas.measure_voltage;
-		_motor->FOC.inject = 1;					  // flag to the SVPWM writer to update at top
-		_motor->FOC.Vdq.d = _motor->meas.Vd_temp; // Vd_temp to keep it aligned with D axis
-		_motor->FOC.Vdq.q = 0.0f;
+		_motor->hfi.special_injectionVd = 0.0f;
+		_motor->hfi.special_injectionVq = _motor->meas.measure_voltage;
+		_motor->hfi.inject = 1;					  // flag to the SVPWM writer to update at top
+		_motor->FOC.base.Vdq.d = _motor->meas.Vd_temp; // Vd_temp to keep it aligned with D axis
+		_motor->FOC.base.Vdq.q = 0.0f;
 
-		if (_motor->FOC.inject_high_low_now == 1)
+		if (_motor->hfi.inject_high_low_now == 1)
 		{
-			_motor->meas.top_I_Lq = _motor->meas.top_I_Lq + _motor->FOC.Idq.q;
+			_motor->meas.top_I_Lq = _motor->meas.top_I_Lq + _motor->FOC.base.Idq.q;
 			_motor->meas.count_topq++;
 		}
-		else if (_motor->FOC.inject_high_low_now == 0)
+		else if (_motor->hfi.inject_high_low_now == 0)
 		{
-			_motor->meas.bottom_I_Lq = _motor->meas.bottom_I_Lq + _motor->FOC.Idq.q;
+			_motor->meas.bottom_I_Lq = _motor->meas.bottom_I_Lq + _motor->FOC.base.Idq.q;
 			_motor->meas.count_bottomq++;
 		}
 	}
@@ -1850,16 +1849,16 @@ void measureResistance(MESC_motor_typedef *_motor)
 		generateBreak(_motor);
 		_motor->HFIType = _motor->meas.previous_HFI_type;
 		_motor->m.L_Q =
-			fabsf((_motor->FOC.special_injectionVq) /
+			fabsf((_motor->hfi.special_injectionVq) /
 				  ((_motor->meas.top_I_Lq - _motor->meas.bottom_I_Lq) / (_motor->meas.count_top * _motor->FOC.pwm_period)));
 
 		_motor->MotorState = MOTOR_STATE_IDLE;
 
-		_motor->FOC.inject = 0; // flag to the SVPWM writer stop injecting at top
-		_motor->FOC.special_injectionVd = 0.0f;
-		_motor->FOC.special_injectionVq = 0.0f;
-		_motor->FOC.Vd_injectionV = 0.0f;
-		_motor->FOC.Vq_injectionV = 0.0f;
+		_motor->hfi.inject = 0; // flag to the SVPWM writer stop injecting at top
+		_motor->hfi.special_injectionVd = 0.0f;
+		_motor->hfi.special_injectionVq = 0.0f;
+		_motor->hfi.Vd_injectionV = 0.0f;
+		_motor->hfi.Vq_injectionV = 0.0f;
 		calculateGains(_motor);
 		_motor->MotorState = MOTOR_STATE_TRACKING;
 		_motor->meas.PWM_cycles = 0;
@@ -1893,25 +1892,25 @@ void getHallTable(MESC_motor_typedef *_motor)
 	static uint16_t a = 65535;
 	if (a) // Align time
 	{
-		_motor->FOC.Idq_req.d = 10.0f;
-		_motor->FOC.Idq_req.q = 0.0f;
+		_motor->FOC.base.Idq_req.d = 10.0f;
+		_motor->FOC.base.Idq_req.q = 0.0f;
 
-		_motor->FOC.FOCAngle = 0.0f;
+		_motor->FOC.base.FOCAngle = 0.0f;
 		a = a - 1;
 	}
 	else
 	{
-		_motor->FOC.Idq_req.d = 10.0f;
-		_motor->FOC.Idq_req.q = 0.0f;
+		_motor->FOC.base.Idq_req.d = 10.0f;
+		_motor->FOC.base.Idq_req.q = 0.0f;
 		static int dir = 1;
 		if (pwm_count < 65534)
 		{
-			if (_motor->FOC.FOCAngle < (anglestep))
+			if (_motor->FOC.base.FOCAngle < (anglestep))
 			{
 				rollover = hallstate;
 			}
-			if ((_motor->FOC.FOCAngle < (30000)) &&
-				(_motor->FOC.FOCAngle > (29000 - anglestep)))
+			if ((_motor->FOC.base.FOCAngle < (30000)) &&
+				(_motor->FOC.base.FOCAngle > (29000 - anglestep)))
 			{
 				rollover = 0;
 			}
@@ -1923,11 +1922,11 @@ void getHallTable(MESC_motor_typedef *_motor)
 					(uint32_t)65535; // Accumulate the angles through the sweep
 			}
 
-			_motor->FOC.FOCAngle =
-				_motor->FOC.FOCAngle + anglestep; // Increment the angle
+			_motor->FOC.base.FOCAngle =
+				_motor->FOC.base.FOCAngle + anglestep; // Increment the angle
 			hallangles[hallstate][0] =
 				hallangles[hallstate][0] +
-				_motor->FOC.FOCAngle;	// Accumulate the angles through the sweep
+				_motor->FOC.base.FOCAngle;	// Accumulate the angles through the sweep
 			hallangles[hallstate][1]++; // Accumulate the number of PWM pulses for
 										// this hall state
 			pwm_count = pwm_count + 1;
@@ -1939,12 +1938,12 @@ void getHallTable(MESC_motor_typedef *_motor)
 				dir = 0;
 				rollover = 0;
 			}
-			if ((_motor->FOC.FOCAngle < (12000)) && (hallstate != _motor->hall.last_hall_state))
+			if ((_motor->FOC.base.FOCAngle < (12000)) && (hallstate != _motor->hall.last_hall_state))
 			{
 				rollover = hallstate;
 			}
-			if ((_motor->FOC.FOCAngle < (65535)) &&
-				(_motor->FOC.FOCAngle > (65535 - anglestep)))
+			if ((_motor->FOC.base.FOCAngle < (65535)) &&
+				(_motor->FOC.base.FOCAngle > (65535 - anglestep)))
 			{
 				rollover = 0;
 			}
@@ -1956,11 +1955,11 @@ void getHallTable(MESC_motor_typedef *_motor)
 					(uint32_t)65535; // Accumulate the angles through the sweep
 			}
 
-			_motor->FOC.FOCAngle =
-				_motor->FOC.FOCAngle - anglestep; // Increment the angle
+			_motor->FOC.base.FOCAngle =
+				_motor->FOC.base.FOCAngle - anglestep; // Increment the angle
 			hallangles[hallstate][0] =
 				hallangles[hallstate][0] +
-				_motor->FOC.FOCAngle;	// Accumulate the angles through the sweep
+				_motor->FOC.base.FOCAngle;	// Accumulate the angles through the sweep
 			hallangles[hallstate][1]++; // Accumulate the number of PWM pulses for
 										// this hall state
 			pwm_count = pwm_count + 1;
@@ -1985,8 +1984,8 @@ void getHallTable(MESC_motor_typedef *_motor)
 			_motor->m.hall_table[i][1] = _motor->m.hall_table[i][2] + _motor->m.hall_table[i][3] / 2; // This is the end angle of the hall state
 		}
 		_motor->MotorState = MOTOR_STATE_TRACKING;
-		_motor->FOC.Idq_req.d = 0;
-		_motor->FOC.Idq_req.q = 0;
+		_motor->FOC.base.Idq_req.d = 0;
+		_motor->FOC.base.Idq_req.q = 0;
 		phU_Enable(_motor);
 		phV_Enable(_motor);
 		phW_Enable(_motor);
@@ -2003,7 +2002,7 @@ void getkV(MESC_motor_typedef *_motor)
 {
 	_motor->meas.previous_HFI_type = _motor->HFIType;
 	_motor->HFIType = HFI_TYPE_NONE;
-	_motor->FOC.inject = 0;
+	_motor->hfi.inject = 0;
 
 	static int cycles = 0;
 	static HFI_type_e old_HFI_type;
@@ -2026,19 +2025,19 @@ void getkV(MESC_motor_typedef *_motor)
 	static uint16_t temp_angle;
 	if (cycles < 60002)
 	{
-		_motor->FOC.Idq_req.d = _motor->meas.measure_current * 0.5f; //
-		_motor->FOC.Idq_req.q = 0.0f;
-		_motor->meas.angle_delta = temp_angle - _motor->FOC.FOCAngle;
-		_motor->FOC.openloop_step = (uint16_t)(ERPM_MEASURE * 65536.0f / (_motor->FOC.pwm_frequency * 60.0f) * (float)cycles / 65000.0f);
-		_motor->FOC.FOCAngle = temp_angle;
+		_motor->FOC.base.Idq_req.d = _motor->meas.measure_current * 0.5f; //
+		_motor->FOC.base.Idq_req.q = 0.0f;
+		_motor->meas.angle_delta = temp_angle - _motor->FOC.base.FOCAngle;
+		_motor->FOC.openloop_step = (uint16_t)(ERPM_MEASURE * 65536.0f / (_motor->FOC.base.pwm_frequency * 60.0f) * (float)cycles / 65000.0f);
+		_motor->FOC.base.FOCAngle = temp_angle;
 		OLGenerateAngle(_motor);
-		temp_angle = _motor->FOC.FOCAngle;
+		temp_angle = _motor->FOC.base.FOCAngle;
 		if (cycles == 60001)
 		{
-			_motor->meas.temp_flux = sqrtf(_motor->FOC.Vdq.d * _motor->FOC.Vdq.d + _motor->FOC.Vdq.q * _motor->FOC.Vdq.q) / (6.28f * (float)_motor->FOC.openloop_step * (float)_motor->FOC.pwm_frequency / 65536.0f);
+			_motor->meas.temp_flux = sqrtf(_motor->FOC.base.Vdq.d * _motor->FOC.base.Vdq.d + _motor->FOC.base.Vdq.q * _motor->FOC.base.Vdq.q) / (6.28f * (float)_motor->FOC.openloop_step * (float)_motor->FOC.base.pwm_frequency / 65536.0f);
 			_motor->FOC.flux_observed = _motor->meas.temp_flux;
-			_motor->FOC.flux_a = _motor->FOC.sincosangle.cos * _motor->FOC.flux_observed;
-			_motor->FOC.flux_b = _motor->FOC.sincosangle.sin * _motor->FOC.flux_observed;
+			_motor->FOC.flux_a = _motor->FOC.base.sincosangle.cos * _motor->FOC.flux_observed;
+			_motor->FOC.flux_b = _motor->FOC.base.sincosangle.sin * _motor->FOC.flux_observed;
 			_motor->m.flux_linkage_max = 1.7f * _motor->FOC.flux_observed;
 			_motor->m.flux_linkage_min = 0.5f * _motor->FOC.flux_observed;
 			_motor->meas.temp_FLA = _motor->FOC.flux_a;
@@ -2049,8 +2048,8 @@ void getkV(MESC_motor_typedef *_motor)
 	else if (cycles < 128000)
 	{
 		count++;
-		_motor->FOC.Idq_req.d = 0.0f;
-		_motor->FOC.Idq_req.q = _motor->meas.measure_closedloop_current;
+		_motor->FOC.base.Idq_req.d = 0.0f;
+		_motor->FOC.base.Idq_req.q = _motor->meas.measure_closedloop_current;
 		MESCFOC(_motor);
 	}
 	else
@@ -2157,8 +2156,8 @@ void calculateFlux(MESC_motor_typedef *_motor)
 
 void calculateGains(MESC_motor_typedef *_motor)
 {
-	_motor->FOC.pwm_period = 1.0f / _motor->FOC.pwm_frequency;
-	_motor->mtimer->Instance->ARR = HAL_RCC_GetHCLKFreq() / (((float)_motor->mtimer->Instance->PSC + 1.0f) * 2 * _motor->FOC.pwm_frequency);
+	_motor->FOC.pwm_period = 1.0f / _motor->FOC.base.pwm_frequency;
+	_motor->mtimer->Instance->ARR = HAL_RCC_GetHCLKFreq() / (((float)_motor->mtimer->Instance->PSC + 1.0f) * 2 * _motor->FOC.base.pwm_frequency);
 	_motor->mtimer->Instance->CCR4 = _motor->mtimer->Instance->ARR - 5; // Just short of dead center (dead center will not actually trigger the conversion)
 #ifdef SINGLE_ADC
 	_motor->mtimer->Instance->CCR4 = _motor->mtimer->Instance->ARR - 80; // If we only have one ADC, we need to convert early otherwise the data will not be ready in time
@@ -2182,7 +2181,7 @@ void calculateGains(MESC_motor_typedef *_motor)
 		_motor->FOC.FW_curr_max = 0.9f * input_vars.max_request_Idq.q; // Limit the field weakenning to 90% of the max current to avoid math errors
 	}
 	_motor->m.L_QD = _motor->m.L_Q - _motor->m.L_D;
-	_motor->FOC.d_polarity = 1;
+	_motor->hfi.d_polarity = 1;
 }
 
 void calculateVoltageGain(MESC_motor_typedef *_motor)
@@ -2233,15 +2232,15 @@ void calculateVoltageGain(MESC_motor_typedef *_motor)
 		//_motor->FOC.HFI_Threshold = ((HFI_VOLTAGE*sqrt2*2.0f)*_motor->FOC.pwm_period)/((_motor->m.L_D+_motor->m.L_Q)*0.5f);
 		if (HFI_THRESHOLD == 0.0f)
 		{
-			_motor->FOC.HFI_toggle_voltage = mtr->Conv.Vbus * 0.05f;
-			if (_motor->FOC.HFI_toggle_voltage < 3.0f)
+			_motor->hfi.HFI_toggle_voltage = mtr->Conv.Vbus * 0.05f;
+			if (_motor->hfi.HFI_toggle_voltage < 3.0f)
 			{
-				_motor->FOC.HFI_toggle_voltage = 3.0f;
+				_motor->hfi.HFI_toggle_voltage = 3.0f;
 			}
 		}
 		else
 		{
-			_motor->FOC.HFI_toggle_voltage = HFI_THRESHOLD;
+			_motor->hfi.HFI_toggle_voltage = HFI_THRESHOLD;
 		}
 		break;
 	}
@@ -2259,7 +2258,7 @@ void calculateVoltageGain(MESC_motor_typedef *_motor)
 	}
 	// Set the over voltage limit dynamically, so that rapid spikes above the bus voltage are trapped.
 	// This should be more convenient for working with PSUs and batteries interchangeably
-	if (fabsf(_motor->FOC.Idq_req.q) < 1.0f)
+	if (fabsf(_motor->FOC.base.Idq_req.q) < 1.0f)
 	{
 		g_hw_setup.Vmax = 0.995f * g_hw_setup.Vmax + 0.005f * (_motor->Conv.Vbus + 0.15f * ABS_MAX_BUS_VOLTAGE);
 	}
@@ -2421,17 +2420,17 @@ void slowLoop(MESC_motor_typedef *_motor)
 		_motor->FOC.Iq_pgain = 0.0f;
 		_motor->FOC.Id_igain = 0.0f;
 		_motor->FOC.Iq_igain = 0.0f;
-		_motor->FOC.openloop_step = (uint16_t)(600.0f * 65536 / _motor->FOC.pwm_frequency); // 300Hz tone
-		_motor->FOC.Idq_int_err.d = 10.0f;													// 1V
-		_motor->FOC.Idq_int_err.q = 0.0f;													// 1V
+		_motor->FOC.openloop_step = (uint16_t)(600.0f * 65536 / _motor->FOC.base.pwm_frequency); // 300Hz tone
+		_motor->FOC.base.Idq_int_err.d = 10.0f;													// 1V
+		_motor->FOC.base.Idq_int_err.q = 0.0f;													// 1V
 		_motor->FOC.Current_bandwidth = 0.0f;
-		_motor->FOC.PLL_int = 0.0f;
-		_motor->FOC.PLL_ki = 0.0f;
-		_motor->FOC.PLL_ki = 0.0f;
-		_motor->FOC.PLL_error = 0.0f;
+		_motor->FOC.base.PLL_int = 0.0f;
+		_motor->FOC.base.PLL_ki = 0.0f;
+		_motor->FOC.base.PLL_ki = 0.0f;
+		_motor->FOC.base.PLL_error = 0.0f;
 
-		_motor->m.R = 10.0f * _motor->FOC.Idq_smoothed.d / (_motor->FOC.Idq_smoothed.d * _motor->FOC.Idq_smoothed.d + _motor->FOC.Idq_smoothed.q * _motor->FOC.Idq_smoothed.q);
-		_motor->m.L_D = -10.0f * _motor->FOC.Idq_smoothed.q / (2.0f * 3.1415f * 600.0f * (_motor->FOC.Idq_smoothed.d * _motor->FOC.Idq_smoothed.d + _motor->FOC.Idq_smoothed.q * _motor->FOC.Idq_smoothed.q));
+		_motor->m.R = 10.0f * _motor->FOC.base.Idq_smoothed.d / (_motor->FOC.base.Idq_smoothed.d * _motor->FOC.base.Idq_smoothed.d + _motor->FOC.base.Idq_smoothed.q * _motor->FOC.base.Idq_smoothed.q);
+		_motor->m.L_D = -10.0f * _motor->FOC.base.Idq_smoothed.q / (2.0f * 3.1415f * 600.0f * (_motor->FOC.base.Idq_smoothed.d * _motor->FOC.base.Idq_smoothed.d + _motor->FOC.base.Idq_smoothed.q * _motor->FOC.base.Idq_smoothed.q));
 		if (_motor->MotorState != MOTOR_STATE_ERROR)
 		{
 			_motor->MotorState = MOTOR_STATE_RUN;
@@ -2440,7 +2439,7 @@ void slowLoop(MESC_motor_typedef *_motor)
 	case MOTOR_CONTROL_MODE_HANDBRAKE:
 		if ((_motor->MotorState == MOTOR_STATE_RUN) || (_motor->MotorState == MOTOR_STATE_TRACKING))
 		{
-			if ((fabsf(_motor->FOC.Vdq.q) < 0.1f * _motor->Conv.Vbus))
+			if ((fabsf(_motor->FOC.base.Vdq.q) < 0.1f * _motor->Conv.Vbus))
 			{ // Check it is not error or spinning fast!
 				_motor->MotorState = MOTOR_STATE_SLAMBRAKE;
 			}
@@ -2476,7 +2475,7 @@ void slowLoop(MESC_motor_typedef *_motor)
 	{
 	case MOTOR_STATE_TRACKING:
 		ThrottleTemperature(_motor);
-		_motor->FOC.was_last_tracking = 1;
+		_motor->hfi.was_last_tracking = 1;
 		// Seperate based on control mode. We NEED to have a fallthrough here in transition state!
 		// Does not seem possible to use nested switches due to fallthrough requirement :(
 		if (_motor->ControlMode == MOTOR_CONTROL_MODE_TORQUE)
@@ -2551,11 +2550,11 @@ void slowLoop(MESC_motor_typedef *_motor)
 		LRObserver();
 #endif
 		// Assign the Idqreq to the PI input
-		_motor->FOC.Idq_req.q = _motor->FOC.Idq_prereq.q;
-		_motor->FOC.Idq_req.d = _motor->FOC.Idq_prereq.d;
+		_motor->FOC.base.Idq_req.q = _motor->FOC.Idq_prereq.q;
+		_motor->FOC.base.Idq_req.d = _motor->FOC.Idq_prereq.d;
 		if (input_vars.UART_dreq)
 		{
-			_motor->FOC.Idq_req.d = input_vars.UART_dreq;
+			_motor->FOC.base.Idq_req.d = input_vars.UART_dreq;
 		} // Override the calcs if a specific d is requested
 		generateEnable(_motor);
 		switch (_motor->ControlMode)
@@ -2667,25 +2666,25 @@ void MESCTrack(MESC_motor_typedef *_motor)
 	_motor->offset.Iw = 0.9999f * _motor->offset.Iw + 0.0001f * (float)_motor->Raw.Iw;
 
 	// Clark transform
-	_motor->FOC.Vab.a =
+	_motor->FOC.base.Vab.a =
 		0.666f * (_motor->Conv.Vu -
 				  0.5f * ((_motor->Conv.Vv) +
 						  (_motor->Conv.Vw)));
-	_motor->FOC.Vab.b =
+	_motor->FOC.base.Vab.b =
 		0.666f *
 		(sqrt3_on_2 * ((_motor->Conv.Vv) -
 					   (_motor->Conv.Vw)));
 
-	sin_cos_fast(_motor->FOC.FOCAngle, &_motor->FOC.sincosangle.sin, &_motor->FOC.sincosangle.cos);
+	sin_cos_fast(_motor->FOC.base.FOCAngle, &_motor->FOC.base.sincosangle.sin, &_motor->FOC.base.sincosangle.cos);
 
 	// Park transform
 
-	_motor->FOC.Vdq.d = _motor->FOC.sincosangle.cos * _motor->FOC.Vab.a +
-						_motor->FOC.sincosangle.sin * _motor->FOC.Vab.b;
-	_motor->FOC.Vdq.q = _motor->FOC.sincosangle.cos * _motor->FOC.Vab.b -
-						_motor->FOC.sincosangle.sin * _motor->FOC.Vab.a;
-	_motor->FOC.Idq_int_err.q = _motor->FOC.Vdq.q;
-	_motor->FOC.Idq_int_err.d = _motor->FOC.Vdq.d;
+	_motor->FOC.base.Vdq.d = _motor->FOC.base.sincosangle.cos * _motor->FOC.base.Vab.a +
+						_motor->FOC.base.sincosangle.sin * _motor->FOC.base.Vab.b;
+	_motor->FOC.base.Vdq.q = _motor->FOC.base.sincosangle.cos * _motor->FOC.base.Vab.b -
+						_motor->FOC.base.sincosangle.sin * _motor->FOC.base.Vab.a;
+	_motor->FOC.base.Idq_int_err.q = _motor->FOC.base.Vdq.q;
+	_motor->FOC.base.Idq_int_err.d = _motor->FOC.base.Vdq.d;
 }
 
 float IacalcDS, IbcalcDS, VacalcDS, VbcalcDS, VdcalcDS, VqcalcDS, FLaDS, FLbDS, FLaDSErr, FLbDSErr;
@@ -2713,15 +2712,15 @@ void deadshort(MESC_motor_typedef *_motor)
 
 	static uint16_t countdown = 10;
 
-	if (countdown == 1 || (((_motor->FOC.Iab.a * _motor->FOC.Iab.a + _motor->FOC.Iab.b * _motor->FOC.Iab.b) > DEADSHORT_CURRENT * DEADSHORT_CURRENT) && countdown < 9))
+	if (countdown == 1 || (((_motor->FOC.base.Iab.a * _motor->FOC.base.Iab.a + _motor->FOC.base.Iab.b * _motor->FOC.base.Iab.b) > DEADSHORT_CURRENT * DEADSHORT_CURRENT) && countdown < 9))
 	{
 		// Need to collect the ADC currents here
 		generateBreak(_motor);
 		// Calculate the voltages in the alpha beta phase...
-		IacalcDS = _motor->FOC.Iab.a;
-		IbcalcDS = _motor->FOC.Iab.b;
-		VacalcDS = -_motor->m.L_D * _motor->FOC.Iab.a / ((9.0f - (float)countdown) * _motor->FOC.pwm_period);
-		VbcalcDS = -_motor->m.L_D * _motor->FOC.Iab.b / ((9.0f - (float)countdown) * _motor->FOC.pwm_period);
+		IacalcDS = _motor->FOC.base.Iab.a;
+		IbcalcDS = _motor->FOC.base.Iab.b;
+		VacalcDS = -_motor->m.L_D * _motor->FOC.base.Iab.a / ((9.0f - (float)countdown) * _motor->FOC.pwm_period);
+		VbcalcDS = -_motor->m.L_D * _motor->FOC.base.Iab.b / ((9.0f - (float)countdown) * _motor->FOC.pwm_period);
 		// Calculate the phase angle
 		// TEST LINE angleDS = (uint16_t)(32768.0f + 10430.0f * fast_atan2(VbcalcDS, VacalcDS)) - 32768;// +16384;
 
@@ -2729,17 +2728,17 @@ void deadshort(MESC_motor_typedef *_motor)
 		// Shifting by 1/4 erev does not work for going backwards. Need to rethink.
 		// Problem is, depending on motor direction, the sign of the voltage generated swaps for the same rotor position.
 		// The atan2(flux linkages) is stable under this regime, but the same for voltage is not.
-		_motor->FOC.FOCAngle = angleDS; //
-		sin_cos_fast(_motor->FOC.FOCAngle, &_motor->FOC.sincosangle.sin, &_motor->FOC.sincosangle.cos);
+		_motor->FOC.base.FOCAngle = angleDS; //
+		sin_cos_fast(_motor->FOC.base.FOCAngle, &_motor->FOC.base.sincosangle.sin, &_motor->FOC.base.sincosangle.cos);
 
 		// Park transform it to get VdVq
-		VdcalcDS = _motor->FOC.sincosangle.cos * VacalcDS +
-				   _motor->FOC.sincosangle.sin * VbcalcDS;
-		VqcalcDS = _motor->FOC.sincosangle.cos * VbcalcDS -
-				   _motor->FOC.sincosangle.sin * VacalcDS;
+		VdcalcDS = _motor->FOC.base.sincosangle.cos * VacalcDS +
+				   _motor->FOC.base.sincosangle.sin * VbcalcDS;
+		VqcalcDS = _motor->FOC.base.sincosangle.cos * VbcalcDS -
+				   _motor->FOC.base.sincosangle.sin * VacalcDS;
 		// Preloading the observer
-		FLaDS = _motor->FOC.flux_observed * _motor->FOC.sincosangle.cos;
-		FLbDS = _motor->FOC.flux_observed * _motor->FOC.sincosangle.sin;
+		FLaDS = _motor->FOC.flux_observed * _motor->FOC.base.sincosangle.cos;
+		FLbDS = _motor->FOC.flux_observed * _motor->FOC.base.sincosangle.sin;
 		// Angle Errors for debugging
 		angleErrorDSENC = angleDS - _motor->FOC.enc_angle;
 		// Do actual preloading
@@ -2747,8 +2746,8 @@ void deadshort(MESC_motor_typedef *_motor)
 		_motor->FOC.flux_b = FLbDS;
 		_motor->FOC.Ia_last = 0.0f;
 		_motor->FOC.Ib_last = 0.0f;
-		_motor->FOC.Idq_int_err.d = VdcalcDS;
-		_motor->FOC.Idq_int_err.q = VqcalcDS;
+		_motor->FOC.base.Idq_int_err.d = VdcalcDS;
+		_motor->FOC.base.Idq_int_err.q = VqcalcDS;
 		// Next PWM cycle it  will jump to running state,
 		MESCFOC(_motor);
 		countdown_cycles = 9 - countdown;
@@ -2958,7 +2957,7 @@ static int plusminus = 1;
 
 void LRObserver(MESC_motor_typedef *_motor)
 {
-	if ((fabsf(_motor->FOC.eHz) > 0.005f * _motor->FOC.pwm_frequency) && (_motor->FOC.inject == 0))
+	if ((fabsf(_motor->FOC.eHz) > 0.005f * _motor->FOC.base.pwm_frequency) && (_motor->hfi.inject == 0))
 	{
 
 		R_observer = (Vd_obs_high_filt - Vd_obs_low_filt) / (2.0f * LR_OBS_CURRENT);
@@ -2969,7 +2968,7 @@ void LRObserver(MESC_motor_typedef *_motor)
 			plusminus = -1;
 			Vd_obs_low_filt = Vd_obs_low / LR_collect_count;
 			Vq_obs_low_filt = Vq_obs_low / LR_collect_count;
-			_motor->FOC.Idq_req.d = _motor->FOC.Idq_req.d + 1.0f * LR_OBS_CURRENT;
+			_motor->FOC.base.Idq_req.d = _motor->FOC.base.Idq_req.d + 1.0f * LR_OBS_CURRENT;
 			Vd_obs_low = 0;
 			Vq_obs_low = 0;
 		}
@@ -2978,7 +2977,7 @@ void LRObserver(MESC_motor_typedef *_motor)
 			plusminus = 1;
 			Vd_obs_high_filt = Vd_obs_high / LR_collect_count;
 			Vq_obs_high_filt = Vq_obs_high / LR_collect_count;
-			_motor->FOC.Idq_req.d = _motor->FOC.Idq_req.d - 1.0f * LR_OBS_CURRENT;
+			_motor->FOC.base.Idq_req.d = _motor->FOC.base.Idq_req.d - 1.0f * LR_OBS_CURRENT;
 			Vd_obs_high = 0;
 			Vq_obs_high = 0;
 		}
@@ -3008,24 +3007,24 @@ void LRObserver(MESC_motor_typedef *_motor)
 void LRObserverCollect(MESC_motor_typedef *_motor)
 {
 	LR_collect_count++;
-	if ((fabsf(_motor->FOC.eHz) > 0.005f * _motor->FOC.pwm_frequency) && (_motor->FOC.inject == 0))
+	if ((fabsf(_motor->FOC.eHz) > 0.005f * _motor->FOC.base.pwm_frequency) && (_motor->hfi.inject == 0))
 	{
 		if (plusminus == 1)
 		{
-			Vd_obs_low = Vd_obs_low + _motor->FOC.Vdq.d;
-			Vq_obs_low = Vq_obs_low + _motor->FOC.Vdq.q;
+			Vd_obs_low = Vd_obs_low + _motor->FOC.base.Vdq.d;
+			Vq_obs_low = Vq_obs_low + _motor->FOC.base.Vdq.q;
 		}
 		if (plusminus == -1)
 		{
-			Vd_obs_high = Vd_obs_high + _motor->FOC.Vdq.d;
-			Vq_obs_high = Vq_obs_high + _motor->FOC.Vdq.q;
+			Vd_obs_high = Vd_obs_high + _motor->FOC.base.Vdq.d;
+			Vq_obs_high = Vq_obs_high + _motor->FOC.base.Vdq.q;
 		}
 	}
 }
 
 void HallFluxMonitor(MESC_motor_typedef *_motor)
 {
-	if (fabsf(_motor->FOC.Vdq.q) > MIN_HALL_FLUX_VOLTS)
+	if (fabsf(_motor->FOC.base.Vdq.q) > MIN_HALL_FLUX_VOLTS)
 	{ // Are we actually spinning at a reasonable pace?
 		if ((_motor->hall.current_hall_state > 0) && (_motor->hall.current_hall_state < 7))
 		{
@@ -3060,15 +3059,15 @@ void logVars(MESC_motor_typedef *_motor)
 	sampled_vars.Iu[sampled_vars.current_sample] = _motor->Conv.Iu;
 	sampled_vars.Iv[sampled_vars.current_sample] = _motor->Conv.Iv;
 	sampled_vars.Iw[sampled_vars.current_sample] = _motor->Conv.Iw;
-	sampled_vars.Vd[sampled_vars.current_sample] = _motor->FOC.Vdq.d;
-	sampled_vars.Vq[sampled_vars.current_sample] = _motor->FOC.Vdq.q;
-	sampled_vars.angle[sampled_vars.current_sample] = _motor->FOC.FOCAngle;
+	sampled_vars.Vd[sampled_vars.current_sample] = _motor->FOC.base.Vdq.d;
+	sampled_vars.Vq[sampled_vars.current_sample] = _motor->FOC.base.Vdq.q;
+	sampled_vars.angle[sampled_vars.current_sample] = _motor->FOC.base.FOCAngle;
 
 	// HFI logging added by JEO
-	sampled_vars.flags[sampled_vars.current_sample] = (_motor->FOC.inject_high_low_now == 1) | ((_motor->FOC.was_last_tracking == 1) << 1);
-	sampled_vars.didq_d[sampled_vars.current_sample] = _motor->FOC.didq.d;
-	sampled_vars.didq_q[sampled_vars.current_sample] = _motor->FOC.didq.q;
-	sampled_vars.HFI_int_err[sampled_vars.current_sample] = _motor->FOC.HFI_int_err;
+	sampled_vars.flags[sampled_vars.current_sample] = (_motor->hfi.inject_high_low_now == 1) | ((_motor->hfi.was_last_tracking == 1) << 1);
+	sampled_vars.didq_d[sampled_vars.current_sample] = _motor->hfi.didq.d;
+	sampled_vars.didq_q[sampled_vars.current_sample] = _motor->hfi.didq.q;
+	sampled_vars.HFI_int_err[sampled_vars.current_sample] = _motor->hfi.HFI_int_err;
 
 	sampled_vars.current_sample++;
 	if (sampled_vars.current_sample >= LOGLENGTH)
@@ -3135,254 +3134,26 @@ void printSamples(UART_HandleTypeDef *uart, DMA_HandleTypeDef *dma)
 
 }
 
-volatile float min1 = 1000.0f;
-volatile float max1 = 0.0f;
-
-void RunHFI(MESC_motor_typedef *_motor)
-{
-	if ((_motor->FOC.inject) && (_motor->MotorState != MOTOR_STATE_TRACKING))
-	{
-		int Idqreq_dir = 0;
-		if (_motor->FOC.inject_high_low_now == 0)
-		{ // First we create the toggle
-			_motor->FOC.inject_high_low_now = 1;
-			Idq[0].d = _motor->FOC.Idq.d;
-			Idq[0].q = _motor->FOC.Idq.q;
-		}
-		else
-		{
-			_motor->FOC.inject_high_low_now = 0;
-			Idq[1].d = _motor->FOC.Idq.d;
-			Idq[1].q = _motor->FOC.Idq.q;
-		}
-		_motor->FOC.didq.d = (Idq[0].d - Idq[1].d); // Calculate the changing current levels
-		_motor->FOC.didq.q = (Idq[0].q - Idq[1].q);
-
-		switch (_motor->HFIType)
-		{
-		case HFI_TYPE_NONE:
-			__NOP();
-			break;
-		/////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		case HFI_TYPE_45:
-			if (_motor->FOC.inject_high_low_now == 1)
-			{
-				_motor->FOC.Vd_injectionV = +_motor->meas.hfi_voltage;
-				if (_motor->FOC.Idq_req.q > 0.0f)
-				{
-					Idqreq_dir = 1;
-					_motor->FOC.Vq_injectionV = +_motor->meas.hfi_voltage;
-				}
-				else
-				{
-					_motor->FOC.Vq_injectionV = -_motor->meas.hfi_voltage;
-					Idqreq_dir = -1;
-				}
-			}
-			else
-			{
-				_motor->FOC.Vd_injectionV = -_motor->meas.hfi_voltage;
-				if (_motor->FOC.Idq_req.q > 0.0f)
-				{
-					_motor->FOC.Vq_injectionV = -_motor->meas.hfi_voltage;
-				}
-				else
-				{
-					_motor->FOC.Vq_injectionV = +_motor->meas.hfi_voltage;
-				}
-			}
-
-			// Run the PLL
-
-			// (A PLL (Phase-Locked Loop) is a control system that synchronizes the phase and frequency
-			// of an output signal with a reference signal)
-
-			magnitude45 = sqrtf(_motor->FOC.didq.d * _motor->FOC.didq.d + _motor->FOC.didq.q * _motor->FOC.didq.q);
-
-			if (_motor->FOC.was_last_tracking == 0)
-			{
-
-				float error;
-				// Estimate the angle error, the gain to be determined in the HFI detection and setup based on
-				// the HFI current and the max iteration allowable
-				error = _motor->FOC.HFI_Gain * (magnitude45 - _motor->FOC.HFI45_mod_didq);
-				if (error > 500.0f)
-				{
-					error = 500.0f;
-				}
-				if (error < -500.0f)
-				{
-					error = -500.0f;
-				}
-				_motor->FOC.HFI_int_err = _motor->FOC.HFI_int_err + 0.05f * error;
-				if (_motor->FOC.HFI_int_err > 1000.0f)
-				{
-					_motor->FOC.HFI_int_err = 1000.0f;
-				}
-				if (_motor->FOC.HFI_int_err < -1000.0f)
-				{
-					_motor->FOC.HFI_int_err = -1000.0f;
-				}
-				_motor->FOC.FOCAngle = _motor->FOC.FOCAngle + (int)(error + _motor->FOC.HFI_int_err) * Idqreq_dir;
-			}
-			else
-			{
-				_motor->FOC.FOCAngle += _motor->FOC.HFI_test_increment;
-				_motor->FOC.HFI_accu += magnitude45;
-				_motor->FOC.HFI_count += 1;
-			}
-#if 0 // Sometimes for investigation we want to just lock the angle, this is an easy bodge
-							_motor->FOC.FOCAngle = 62000;
-#endif
-			break;
-		/////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		case HFI_TYPE_D:
-			if (_motor->FOC.inject_high_low_now == 1)
-			{
-				_motor->FOC.Vd_injectionV = +_motor->meas.hfi_voltage;
-			}
-			else
-			{
-				_motor->FOC.Vd_injectionV = -_motor->meas.hfi_voltage;
-			}
-			if (_motor->FOC.didq.q > 1.0f)
-			{
-				_motor->FOC.didq.q = 1.0f;
-			}
-			if (_motor->FOC.didq.q < -1.0f)
-			{
-				_motor->FOC.didq.q = -1.0f;
-			}
-			intdidq.q = (intdidq.q + 0.1f * _motor->FOC.didq.q);
-			if (intdidq.q > 10)
-			{
-				intdidq.q = 10;
-			}
-			if (intdidq.q < -10)
-			{
-				intdidq.q = -10;
-			}
-			_motor->FOC.FOCAngle += (int)(250.0f * _motor->FOC.IIR[1] + 10.50f * intdidq.q) * _motor->FOC.d_polarity;
-			break;
-		case HFI_TYPE_SPECIAL:
-			__NOP();
-			if (_motor->FOC.inject_high_low_now == 1)
-			{
-				_motor->FOC.Vd_injectionV = _motor->FOC.special_injectionVd;
-				_motor->FOC.Vq_injectionV = _motor->FOC.special_injectionVq;
-			}
-			else
-			{
-				_motor->FOC.Vd_injectionV = -_motor->FOC.special_injectionVd;
-				_motor->FOC.Vq_injectionV = -_motor->FOC.special_injectionVq;
-			}
-			break;
-		}
-	}
-	else
-	{
-		_motor->FOC.Vd_injectionV = 0.0f;
-		_motor->FOC.Vq_injectionV = 0.0f;
-	}
-}
-
-void SlowHFI(MESC_motor_typedef *_motor)
-{
-	/////////////Set and reset the HFI////////////////////////
-	switch (_motor->HFIType)
-	{
-	case HFI_TYPE_45:
-		ToggleHFI(_motor);
-		if (_motor->FOC.inject == 1)
-		{
-			// static int no_q;
-			if (_motor->FOC.was_last_tracking == 1)
-			{
-				if (_motor->FOC.HFI_countdown > 1)
-				{
-					_motor->FOC.HFI45_mod_didq = _motor->FOC.HFI_accu / _motor->FOC.HFI_count;
-					_motor->FOC.HFI_Gain = 5000.0f / _motor->FOC.HFI45_mod_didq;
-					_motor->FOC.was_last_tracking = 0;
-					_motor->sample_now = 1; // JEO HACK
-				}
-				else
-				{
-					_motor->FOC.HFI_test_increment = 65536 * SLOW_LOOP_FREQUENCY / _motor->FOC.pwm_frequency;
-					_motor->FOC.HFI_countdown++;
-				}
-			}
-			else
-			{
-				_motor->FOC.HFI_countdown = 0;
-				_motor->FOC.HFI_count = 0;
-				_motor->FOC.HFI_accu = 0.0f;
-			}
-		}
-		break;
-
-	case HFI_TYPE_D:
-		ToggleHFI(_motor);
-		if (_motor->FOC.inject == 1)
-		{
-			if (_motor->FOC.HFI_countdown == 3)
-			{
-				_motor->FOC.Idq_req.d = HFI_TEST_CURRENT;
-				_motor->FOC.Idq_req.q = 0.0f; // Override the inputs to set Q current to zero
-			}
-			else if (_motor->FOC.HFI_countdown == 2)
-			{
-				_motor->FOC.Ldq_now_dboost[0] = _motor->FOC.IIR[0]; // Find the effect of d-axis current
-				_motor->FOC.Idq_req.d = 1.0f;
-				_motor->FOC.Idq_req.q = 0.0f;
-			}
-			else if (_motor->FOC.HFI_countdown == 1)
-			{
-				_motor->FOC.Idq_req.d = -HFI_TEST_CURRENT;
-				_motor->FOC.Idq_req.q = 0.0f;
-			}
-			else if (_motor->FOC.HFI_countdown == 0)
-			{
-				_motor->FOC.Ldq_now[0] = _motor->FOC.IIR[0]; //_motor->FOC.Vd_injectionV;
-				_motor->FOC.Idq_req.d = 0.0f;
-				if (_motor->FOC.Ldq_now[0] > _motor->FOC.Ldq_now_dboost[0])
-				{
-					_motor->FOC.FOCAngle += 32768;
-				}
-				_motor->FOC.HFI_countdown = 200;
-			}
-			_motor->FOC.HFI_countdown--;
-		}
-		break;
-
-	case HFI_TYPE_NONE:
-		_motor->FOC.inject = 0;
-		//				_motor->FOC.Current_bandwidth = CURRENT_BANDWIDTH;
-		break;
-	case HFI_TYPE_SPECIAL:
-		ToggleHFI(_motor);
-		break;
-	}
-}
 void SlowStartup(MESC_motor_typedef *_motor)
 {
 	switch (_motor->SLStartupSensor)
 	{
 	case STARTUP_SENSOR_HALL:
-		if ((fabsf(_motor->FOC.Vdq.q - _motor->m.R * _motor->FOC.Idq_smoothed.q) < HALL_VOLTAGE_THRESHOLD) && (_motor->FOC.hall_initialised) && (_motor->hall.current_hall_state > 0) && (_motor->hall.current_hall_state < 7))
+		if ((fabsf(_motor->FOC.base.Vdq.q - _motor->m.R * _motor->FOC.base.Idq_smoothed.q) < HALL_VOLTAGE_THRESHOLD) && (_motor->FOC.hall_initialised) && (_motor->hall.current_hall_state > 0) && (_motor->hall.current_hall_state < 7))
 		{
 			_motor->FOC.hall_start_now = 1;
 		}
-		else if ((fabsf(_motor->FOC.Vdq.q - _motor->m.R * _motor->FOC.Idq_smoothed.q) > HALL_VOLTAGE_THRESHOLD + 2.0f) || (_motor->hall.current_hall_state = 0) || (_motor->hall.current_hall_state > 6))
+		else if ((fabsf(_motor->FOC.base.Vdq.q - _motor->m.R * _motor->FOC.base.Idq_smoothed.q) > HALL_VOLTAGE_THRESHOLD + 2.0f) || (_motor->hall.current_hall_state = 0) || (_motor->hall.current_hall_state > 6))
 		{
 			_motor->FOC.hall_start_now = 0;
 		}
 		break;
 	case STARTUP_SENSOR_PWM_ENCODER:
-		if ((fabsf(_motor->FOC.Vdq.q - _motor->m.R * _motor->FOC.Idq_smoothed.q) < HALL_VOLTAGE_THRESHOLD) && (_motor->FOC.encoder_OK))
+		if ((fabsf(_motor->FOC.base.Vdq.q - _motor->m.R * _motor->FOC.base.Idq_smoothed.q) < HALL_VOLTAGE_THRESHOLD) && (_motor->FOC.encoder_OK))
 		{
 			_motor->FOC.enc_start_now = 1;
 		}
-		else if ((fabsf(_motor->FOC.Vdq.q - _motor->m.R * _motor->FOC.Idq_smoothed.q) > HALL_VOLTAGE_THRESHOLD + 2.0f) || !(_motor->FOC.encoder_OK))
+		else if ((fabsf(_motor->FOC.base.Vdq.q - _motor->m.R * _motor->FOC.base.Idq_smoothed.q) > HALL_VOLTAGE_THRESHOLD + 2.0f) || !(_motor->FOC.encoder_OK))
 		{
 			_motor->FOC.enc_start_now = 0;
 		}
@@ -3394,67 +3165,6 @@ void SlowStartup(MESC_motor_typedef *_motor)
 		_motor->FOC.hall_start_now = 0;
 		_motor->FOC.enc_start_now = 0;
 	}
-}
-void ToggleHFI(MESC_motor_typedef *_motor)
-{
-	if (((_motor->FOC.Vdq.q - _motor->FOC.Idq_smoothed.q * _motor->m.R) > _motor->FOC.HFI_toggle_voltage) || ((_motor->FOC.Vdq.q - _motor->FOC.Idq_smoothed.q * _motor->m.R) < -_motor->FOC.HFI_toggle_voltage) || (_motor->MotorSensorMode == MOTOR_SENSOR_MODE_HALL))
-	{
-		_motor->FOC.inject = 0;
-		_motor->FOC.Current_bandwidth = CURRENT_BANDWIDTH;
-	}
-	else if (((_motor->FOC.Vdq.q - _motor->FOC.Idq_smoothed.q * _motor->m.R) < (_motor->FOC.HFI_toggle_voltage - 1.0f)) && ((_motor->FOC.Vdq.q - _motor->FOC.Idq_smoothed.q * _motor->m.R) > -(_motor->FOC.HFI_toggle_voltage - 1.0f)) && (_motor->HFIType != HFI_TYPE_NONE))
-	{
-		_motor->FOC.HFI_int_err = _motor->FOC.PLL_int;
-		_motor->FOC.inject = 1;
-		_motor->FOC.Current_bandwidth = CURRENT_BANDWIDTH * 0.1f;
-	}
-}
-
-static float dinductance, qinductance;
-
-float detectHFI(MESC_motor_typedef *_motor)
-{
-	/// Try out a new detection routine
-#if 1
-
-	_motor->meas.previous_HFI_type = _motor->HFIType;
-	_motor->HFIType = HFI_TYPE_D;
-	input_vars.UART_req = 0.25f;
-	int a = 0;
-	dinductance = 0;
-	qinductance = 0;
-	while (a < 1000)
-	{
-		a++;
-		_motor->HFIType = HFI_TYPE_D;
-		dinductance = dinductance + _motor->FOC.didq.d;
-		HAL_Delay(0);
-		// input_vars.input_options = 0b
-	}
-	dinductance = dinductance / 1000.0f;
-	// dinductance = motor1.FOC.pwm_period*motor1.FOC.Vd_injectionV/(motor1.Conv.Vbus*dinductance);
-	// Vdt/di = L
-	_motor->FOC.d_polarity = -1;
-	a = 0;
-	while (a < 1000)
-	{
-		a++;
-		_motor->HFIType = HFI_TYPE_D;
-		qinductance = qinductance + _motor->FOC.didq.d;
-		HAL_Delay(0);
-		// input_vars.input_options = 0b
-	}
-	qinductance = qinductance / 1000.0f; // Note that this is not yet an inductance, but an inverse of inductance*voltage
-	_motor->FOC.HFI45_mod_didq = sqrtf(qinductance * qinductance + dinductance * dinductance);
-	_motor->FOC.HFI_Gain = 5000.0f / _motor->FOC.HFI45_mod_didq; // Magic numbers that seem to work
-	input_vars.UART_req = 0.0f;
-	_motor->FOC.d_polarity = 1;
-
-	_motor->HFIType = _motor->meas.previous_HFI_type;
-
-	return _motor->FOC.HFI45_mod_didq;
-
-#endif
 }
 
 void collectInputs(MESC_motor_typedef *_motor)
@@ -3692,8 +3402,8 @@ void RunMTPA(MESC_motor_typedef *_motor)
 void calculatePower(MESC_motor_typedef *_motor)
 {
 	////// Calculate the current power
-	_motor->FOC.currentPower.d = 1.5f * (_motor->FOC.Vdq.d * _motor->FOC.Idq_smoothed.d);
-	_motor->FOC.currentPower.q = 1.5f * (_motor->FOC.Vdq.q * _motor->FOC.Idq_smoothed.q);
+	_motor->FOC.currentPower.d = 1.5f * (_motor->FOC.base.Vdq.d * _motor->FOC.base.Idq_smoothed.d);
+	_motor->FOC.currentPower.q = 1.5f * (_motor->FOC.base.Vdq.q * _motor->FOC.base.Idq_smoothed.q);
 	_motor->FOC.Ibus = (_motor->FOC.currentPower.d + _motor->FOC.currentPower.q) / _motor->Conv.Vbus;
 }
 
@@ -3728,16 +3438,16 @@ void LimitFWCurrent(MESC_motor_typedef *_motor)
 void clampBatteryPower(MESC_motor_typedef *_motor)
 {
 	/////// Clamp the max power taken from the battery
-	_motor->FOC.reqPower = 1.5f * fabsf(_motor->FOC.Vdq.q * _motor->FOC.Idq_prereq.q);
+	_motor->FOC.reqPower = 1.5f * fabsf(_motor->FOC.base.Vdq.q * _motor->FOC.Idq_prereq.q);
 	if (_motor->FOC.reqPower > _motor->m.Pmax)
 	{
 		if (_motor->FOC.Idq_prereq.q > 0.0f)
 		{
-			_motor->FOC.Idq_prereq.q = _motor->m.Pmax / (fabsf(_motor->FOC.Vdq.q) * 1.5f);
+			_motor->FOC.Idq_prereq.q = _motor->m.Pmax / (fabsf(_motor->FOC.base.Vdq.q) * 1.5f);
 		}
 		else
 		{
-			_motor->FOC.Idq_prereq.q = -_motor->m.Pmax / (fabsf(_motor->FOC.Vdq.q) * 1.5f);
+			_motor->FOC.Idq_prereq.q = -_motor->m.Pmax / (fabsf(_motor->FOC.base.Vdq.q) * 1.5f);
 		}
 	}
 }
@@ -3758,11 +3468,11 @@ void houseKeeping(MESC_motor_typedef *_motor)
 	}
 
 	// Speed tracker
-	if (abs(_motor->FOC.PLL_int) > 10000.0f)
+	if (abs(_motor->FOC.base.PLL_int) > 10000.0f)
 	{
 		// The PLL has run away locking on to aliases; 10000 implies 6.5 pwm periods per sin wave, which is ~3000eHz, 180kerpm at 20kHz PWM frequency.
 		// While it IS possible to run faster than this, it is not a sensible use case and will not be supported.
-		_motor->FOC.PLL_int = 0;
+		_motor->FOC.base.PLL_int = 0;
 	}
 	// Translate the eHz to eRPM
 	if (_motor->m.pole_pairs > 0)
@@ -3788,13 +3498,13 @@ void FWRampDown(MESC_motor_typedef *_motor)
 {
 	// Ramp down the field weakening current
 	// Do NOT assign motorState here, since it could override error states
-	if (_motor->FOC.Vdq.q < 0.0f)
+	if (_motor->FOC.base.Vdq.q < 0.0f)
 	{
-		_motor->FOC.Idq_req.q = 0.2f; // Apply a brake current
+		_motor->FOC.base.Idq_req.q = 0.2f; // Apply a brake current
 	}
-	if (_motor->FOC.Vdq.q > 0.0f)
+	if (_motor->FOC.base.Vdq.q > 0.0f)
 	{
-		_motor->FOC.Idq_req.q = -0.2f; // Apply a brake current
+		_motor->FOC.base.Idq_req.q = -0.2f; // Apply a brake current
 	}
 }
 
@@ -3847,7 +3557,7 @@ void ThrottleTemperature(MESC_motor_typedef *_motor)
 
 void safeStart(MESC_motor_typedef *_motor)
 {
-	if ((_motor->FOC.Idq_req.q == 0.0f) && (_motor->FOC.Idq_prereq.q == 0.0f))
+	if ((_motor->FOC.base.Idq_req.q == 0.0f) && (_motor->FOC.Idq_prereq.q == 0.0f))
 	{
 		_motor->safe_start[1]++;
 	}

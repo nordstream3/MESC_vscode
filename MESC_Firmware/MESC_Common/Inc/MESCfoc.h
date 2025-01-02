@@ -45,6 +45,8 @@
 #include "MESCmotor.h"
 #include "MESCtemp.h"
 #include "MESC_BLDC.h"
+#include "foc.h"
+#include "hfi.h"
 
 //#include "MESCposition.h"
 #define LOGGING
@@ -106,18 +108,6 @@
 
 #ifndef DEADSHORT_CURRENT
 #define DEADSHORT_CURRENT 30.0f
-#endif
-//HFI related
-#ifndef HFI_VOLTAGE
-#define HFI_VOLTAGE 4.0f
-#endif
-
-#ifndef HFI_TEST_CURRENT
-#define HFI_TEST_CURRENT 10.0f
-#endif
-
-#ifndef HFI_THRESHOLD
-#define HFI_THRESHOLD 3.0f
 #endif
 
 #ifndef CURRENT_BANDWIDTH
@@ -239,26 +229,10 @@ typedef struct {
 }MESC_Converted_typedef;
 
 typedef struct {
-	float sin;
-	float cos;
-}MESCsin_cos_s;
-
-typedef struct {
-  float d;
-  float q;
-} MESCiq_s;
-
-typedef struct {
-  float a;
-  float b;
-  float g;
-} MESCiab_s;
-
-typedef struct {
+  Base_foc_s base;
   int initing;  // Flag to say we are initialising
 
   uint16_t openloop_step;//The angle to increment by for openloop
-  uint16_t FOCAngle;    // Angle generated in the hall sensor estimator
   uint32_t encoder_duration;
   uint32_t encoder_pulse;
   uint32_t encoder_OK;
@@ -280,22 +254,11 @@ typedef struct {
   float park_current_now;
 
   float FLAdiff;
-  MESCsin_cos_s sincosangle;  // This variable carries the current sin and cosine of
-                         	  // the angle being used for Park and Clark transforms,
-                              // so they only need computing once per pwm cycle
-  MESCiab_s Vab;							//Float vector containing the Alpha beta frame voltage
-  MESCiab_s Iab;							// Float vector containing the Clark transformed current in Amps
-  MESCiq_s Idq;      						// Float vector containing the Park
-  	  	  	  	  	  	  	  	  	  	  	// transformed current in amps
-  MESCiq_s Vdq;
-  MESCiq_s Idq_smoothed;
-  MESCiq_s Idq_int_err;
   float id_mtpa;
   float iq_mtpa;
 
 
   float inverterVoltage[3];
-  MESCiq_s Idq_req;							//The input to the PI controller. Load this with the values you want.
   MESCiq_s Idq_prereq2;
   MESCiq_s Idq_prereq; 						//Before we set the input to the current PI controller, we want to run a series of calcs (collect variables,
 										  	  //calculate MTPA... that needs to be done without it putting jitter onto the PI input.
@@ -323,7 +286,6 @@ typedef struct {
   int enc_start_now;
 
   float pwm_period;
-  float pwm_frequency;
 
   float Current_bandwidth;
   float Id_pgain;  // Current controller gains
@@ -358,36 +320,9 @@ typedef struct {
   uint32_t IRQentry;
   uint32_t IRQexit;
 
-  //HFI
-  uint16_t inject;
-  uint16_t inject_high_low_now;
-  float Vd_injectionV;
-  float Vq_injectionV;
-  float special_injectionVd;
-  float special_injectionVq;
-  float HFI_toggle_voltage;
-  float HFI45_mod_didq;
-  float HFI_Gain;
-  float HFI_int_err;
-  float HFI_accu;
-  MESCiq_s didq;
-  int32_t HFI_countdown;
-  uint32_t HFI_count;
-  uint32_t HFI_test_increment;
-  int was_last_tracking;
-  uint32_t FLrun, VFLrun;
-  float PLL_error;
-  float PLL_int;
-  float PLL_kp;
-  float PLL_ki;
-  uint32_t PLL_angle;
   float eHz;
   float mechRPM;
-  float Ldq_now[2];
-  float Ldq_now_dboost[2];
-  int d_polarity; //With this, we can swap the PLL polarity and therefore make it track Q instead of D. This is useful for detection
 
-  float IIR[2];
   uint32_t cycles_fastloop;
   uint32_t cycles_pwmloop;
 } MESCfoc_s;
@@ -495,7 +430,7 @@ typedef struct{
 ///////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////Main typedef for starting a motor instance////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////
-typedef struct{
+typedef struct MESC_motor_typedef {
 	TIM_HandleTypeDef *mtimer; //3 phase PWM timer
 	TIM_HandleTypeDef *stimer; //Timer that services the slowloop
 	TIM_HandleTypeDef *enctimer; //Timer devoted to taking incremental encoder inputs
@@ -511,6 +446,7 @@ typedef struct{
 	MESC_Converted_typedef Conv;
 	MESC_offset_typedef offset;
 	MESCfoc_s FOC;
+	hfi_s hfi;
 	MESCPos_s pos;
 	MESCBLDC_s BLDC;
 	MOTORProfile m;
@@ -745,8 +681,6 @@ void HallFluxMonitor(MESC_motor_typedef *_motor);
 void getIncEncAngle(MESC_motor_typedef *_motor);
 void logVars(MESC_motor_typedef *_motor);
 void printSamples(UART_HandleTypeDef *uart, DMA_HandleTypeDef *dma);
-void RunHFI(MESC_motor_typedef *_motor);
-void ToggleHFI(MESC_motor_typedef *_motor);
 void collectInputs(MESC_motor_typedef *_motor);
 void RunMTPA(MESC_motor_typedef *_motor);
 void safeStart(MESC_motor_typedef *_motor);

@@ -188,10 +188,10 @@ uint8_t CMD_measure(TERMINAL_HANDLE * handle, uint8_t argCount, char ** args){
 			vTaskDelay(5);
 			xQueueSemaphoreTake(port->term_block, portMAX_DELAY);
 			ttprintf(".");
-			Ibot = Ibot+motor_curr->FOC.Idq.q;
-			Vbot = Vbot+motor_curr->FOC.Vdq.q;
+			Ibot = Ibot+motor_curr->FOC.base.Idq.q;
+			Vbot = Vbot+motor_curr->FOC.base.Vdq.q;
 			a--;
-			motor_curr->FOC.FOCAngle +=300;
+			motor_curr->FOC.base.FOCAngle +=300;
 		}
 		a=200;
 		input_vars.UART_req = 0.55f*motor_curr->m.Imax;
@@ -200,10 +200,10 @@ uint8_t CMD_measure(TERMINAL_HANDLE * handle, uint8_t argCount, char ** args){
 			vTaskDelay(5);
 			xQueueSemaphoreTake(port->term_block, portMAX_DELAY);
 			ttprintf(".");
-			Itop = Itop+motor_curr->FOC.Idq.q;
-			Vtop = Vtop+motor_curr->FOC.Vdq.q;
+			Itop = Itop+motor_curr->FOC.base.Idq.q;
+			Vtop = Vtop+motor_curr->FOC.base.Vdq.q;
 			a--;
-			motor_curr->FOC.FOCAngle +=300;
+			motor_curr->FOC.base.FOCAngle +=300;
 		}
 
 		motor_curr->m.R = (Vtop-Vbot)/((Itop-Ibot)); //Calculate the resistance
@@ -245,22 +245,22 @@ uint8_t CMD_measure(TERMINAL_HANDLE * handle, uint8_t argCount, char ** args){
 		motor_curr->MotorState = MOTOR_STATE_RUN;
 		input_vars.UART_req = 0.25f; //Stop it going into tracking mode
 		motor_curr->HFIType = HFI_TYPE_SPECIAL;
-		motor_curr->FOC.special_injectionVd = 0.2f;
-		motor_curr->FOC.special_injectionVq = 0.0f;
+		motor_curr->hfi.special_injectionVd = 0.2f;
+		motor_curr->hfi.special_injectionVq = 0.0f;
 		motor_curr->MotorSensorMode = MOTOR_SENSOR_MODE_OPENLOOP;
 		motor_curr->FOC.openloop_step = 0;
-		motor_curr->FOC.FOCAngle = 0;
+		motor_curr->FOC.base.FOCAngle = 0;
 		input_vars.UART_dreq = -5.0f;
-		motor_curr->FOC.didq.d = 0.0f;
+		motor_curr->hfi.didq.d = 0.0f;
 		vTaskDelay(10);
 
 		//Determine the voltage required
 		while(a){
-			if(fabsf(motor_curr->FOC.didq.d)<5.0f){
-				motor_curr->FOC.special_injectionVd *=1.05f;
-				if(motor_curr->FOC.special_injectionVd > (0.5f * motor_curr->Conv.Vbus))
+			if(fabsf(motor_curr->hfi.didq.d)<5.0f){
+				motor_curr->hfi.special_injectionVd *=1.05f;
+				if(motor_curr->hfi.special_injectionVd > (0.5f * motor_curr->Conv.Vbus))
 				{
-					motor_curr->FOC.special_injectionVd = 0.5f * motor_curr->Conv.Vbus;
+					motor_curr->hfi.special_injectionVd = 0.5f * motor_curr->Conv.Vbus;
 				}
 			}
 			xSemaphoreGive(port->term_block);
@@ -276,7 +276,7 @@ uint8_t CMD_measure(TERMINAL_HANDLE * handle, uint8_t argCount, char ** args){
 			a=200;
 			input_vars.UART_dreq = -motor_curr->m.Imax * 0.25f * (float)b;
 			while(a){
-				Loffset[b] = Loffset[b] + motor_curr->FOC.didq.d;
+				Loffset[b] = Loffset[b] + motor_curr->hfi.didq.d;
 				xSemaphoreGive(port->term_block);
 				vTaskDelay(5);
 				xQueueSemaphoreTake(port->term_block, portMAX_DELAY);
@@ -284,25 +284,25 @@ uint8_t CMD_measure(TERMINAL_HANDLE * handle, uint8_t argCount, char ** args){
 				a--;
 			}
 		Loffset[b] = Loffset[b]/200;
-		Loffset[b] = motor_curr->FOC.pwm_period * motor_curr->FOC.special_injectionVd/Loffset[b];
+		Loffset[b] = motor_curr->FOC.pwm_period * motor_curr->hfi.special_injectionVd/Loffset[b];
 		}
 
 		TERM_sendVT100Code(handle,_VT100_ERASE_LINE, 0);
 		TERM_sendVT100Code(handle,_VT100_CURSOR_SET_COLUMN, 0);
-		ttprintf("D-Inductance = %f , %f , %f  H\r\n voltage was %f \r\n", (double)Loffset[0], (double)Loffset[1], (double)Loffset[2], (double)motor_curr->FOC.special_injectionVd);
+		ttprintf("D-Inductance = %f , %f , %f  H\r\n voltage was %f \r\n", (double)Loffset[0], (double)Loffset[1], (double)Loffset[2], (double)motor_curr->hfi.special_injectionVd);
 
 		//Now do Lq
-		motor_curr->FOC.special_injectionVq = motor_curr->FOC.special_injectionVd;
-		float c = motor_curr->FOC.special_injectionVq;
-		motor_curr->FOC.special_injectionVd = 0.0f;
+		motor_curr->hfi.special_injectionVq = motor_curr->hfi.special_injectionVd;
+		float c = motor_curr->hfi.special_injectionVq;
+		motor_curr->hfi.special_injectionVd = 0.0f;
 		for(b=0;b<3; b++){
 			Lqoffset[b] = 0.0f;
 			a=200;
 			input_vars.UART_dreq = -10.0f ;
-			motor_curr->FOC.special_injectionVq = c * (1+(float)b);
-			if(motor_curr->FOC.special_injectionVq > motor_curr->Conv.Vbus*0.5f){motor_curr->FOC.special_injectionVq = motor_curr->Conv.Vbus*0.5f;}
+			motor_curr->hfi.special_injectionVq = c * (1+(float)b);
+			if(motor_curr->hfi.special_injectionVq > motor_curr->Conv.Vbus*0.5f){motor_curr->hfi.special_injectionVq = motor_curr->Conv.Vbus*0.5f;}
 			while(a){
-				Lqoffset[b] = Lqoffset[b] + motor_curr->FOC.didq.q;
+				Lqoffset[b] = Lqoffset[b] + motor_curr->hfi.didq.q;
 				xSemaphoreGive(port->term_block);
 				vTaskDelay(5);
 				xQueueSemaphoreTake(port->term_block, portMAX_DELAY);
@@ -310,7 +310,7 @@ uint8_t CMD_measure(TERMINAL_HANDLE * handle, uint8_t argCount, char ** args){
 				a--;
 			}
 		Lqoffset[b] = Lqoffset[b]/200;
-		Lqoffset[b] = motor_curr->FOC.pwm_period * motor_curr->FOC.special_injectionVq/Lqoffset[b];
+		Lqoffset[b] = motor_curr->FOC.pwm_period * motor_curr->hfi.special_injectionVq/Lqoffset[b];
 		}
 
 		//Put things back to runable
@@ -323,10 +323,10 @@ uint8_t CMD_measure(TERMINAL_HANDLE * handle, uint8_t argCount, char ** args){
 
 		TERM_sendVT100Code(handle,_VT100_ERASE_LINE, 0);
 		TERM_sendVT100Code(handle,_VT100_CURSOR_SET_COLUMN, 0);
-		ttprintf("Q-Inductance = %f , %f , %f  H\r\n voltage was %f \r\n", (double)Lqoffset[0], (double)Lqoffset[1], (double)Lqoffset[2], (double)motor_curr->FOC.special_injectionVq);
+		ttprintf("Q-Inductance = %f , %f , %f  H\r\n voltage was %f \r\n", (double)Lqoffset[0], (double)Lqoffset[1], (double)Lqoffset[2], (double)motor_curr->hfi.special_injectionVq);
 
-		motor_curr->FOC.special_injectionVd = 0.0f;
-		motor_curr->FOC.special_injectionVq = 0.0f;
+		motor_curr->hfi.special_injectionVd = 0.0f;
+		motor_curr->hfi.special_injectionVq = 0.0f;
 
 		vTaskDelay(200);
 	}
@@ -454,8 +454,8 @@ void populate_vars(){
 	TERM_addVar(mtr[0].m.L_Q						, 0.0f		, 10.0f		, "lq_phase"	, "Phase inductance"					, VAR_ACCESS_RW	, callback  , &TERM_varList);
 	TERM_addVar(mtr[0].HFIType						, 0			, 3			, "hfi_type"	, "HFI type [0=None, 1=45deg, 2=d axis]", VAR_ACCESS_RW	, NULL		, &TERM_varList);
 	TERM_addVar(mtr[0].meas.hfi_voltage				, 0.0f		, 50.0f		, "hfi_volt"	, "HFI voltage"							, VAR_ACCESS_RW	, NULL		, &TERM_varList);
-	TERM_addVar(mtr[0].FOC.HFI45_mod_didq			, 0.0f		, 2.0f		, "hfi_mod_didq", "HFI mod didq"						, VAR_ACCESS_RW	, NULL		, &TERM_varList);
-	TERM_addVar(mtr[0].FOC.HFI_Gain					, 0.0f		, 5000.0f	, "hfi_gain"	, "HFI gain"							, VAR_ACCESS_RW	, NULL		, &TERM_varList);
+	TERM_addVar(mtr[0].hfi.HFI45_mod_didq		, 0.0f		, 2.0f		, "hfi_mod_didq", "HFI mod didq"						, VAR_ACCESS_RW	, NULL		, &TERM_varList);
+	TERM_addVar(mtr[0].hfi.HFI_Gain				, 0.0f		, 5000.0f	, "hfi_gain"	, "HFI gain"							, VAR_ACCESS_RW	, NULL		, &TERM_varList);
 	TERM_addVar(mtr[0].FOC.FW_curr_max				, 0.0f		, 300.0f	, "fw_curr"		, "Max field weakenning current"		, VAR_ACCESS_RW	, NULL		, &TERM_varList);
 	TERM_addVar(mtr[0].meas.measure_current			, 0.5f		, 100.0f	, "meas_curr"	, "Measuring current"					, VAR_ACCESS_RW	, NULL		, &TERM_varList);
 	TERM_addVar(mtr[0].meas.measure_closedloop_current, 0.5f	, 100.0f	, "meas_cl_curr"		, "Measuring q closed loop current"		, VAR_ACCESS_RW	, NULL		, &TERM_varList);
@@ -468,14 +468,14 @@ void populate_vars(){
 	TERM_addVar(input_vars.ADC2_polarity			, -1.0f		, 1.0f		, "adc2_pol"	, "ADC2 polarity"						, VAR_ACCESS_RW	, NULL		, &TERM_varList);
 	TERM_addVar(input_vars.max_request_Idq.q		, 0.0f		, 300.0f	, "curr_max"	, "Max motor current"					, VAR_ACCESS_RW	, callback	, &TERM_varList);
 	TERM_addVar(input_vars.min_request_Idq.q		, -300.0f	, 0.0f		, "curr_min"	, "Min motor current"					, VAR_ACCESS_RW	, callback	, &TERM_varList);
-	TERM_addVar(mtr[0].FOC.pwm_frequency			, 0.0f		, 100000.0f	, "pwm_freq"	, "PWM frequency"						, VAR_ACCESS_RW	, callback	, &TERM_varList);
+	TERM_addVar(mtr[0].FOC.base.pwm_frequency		, 0.0f		, 100000.0f	, "pwm_freq"	, "PWM frequency"						, VAR_ACCESS_RW	, callback	, &TERM_varList);
 	TERM_addVar(input_vars.UART_req					, -1000.0f	, 1000.0f	, "uart_req"	, "Uart input"							, VAR_ACCESS_RW	, NULL		, &TERM_varList);
 	TERM_addVar(input_vars.UART_dreq				, -1000.0f	, 1000.0f	, "uart_dreq"	, "Uart input"							, VAR_ACCESS_RW	, NULL		, &TERM_varList);
 	TERM_addVar(input_vars.input_options			, 0			, 128		, "input_opt"	, "Inputs [1=ADC1 2=ADC2 4=PPM 8=UART 16=Killswitch 32=CANADC1 64=CANADC2 128=ADC12DIFF]"	, VAR_ACCESS_RW	, callback	, &TERM_varList);
 	TERM_addVar(mtr[0].safe_start[0]				, 0			, 1000		, "safe_start"	, "Countdown before allowing throttle"	, VAR_ACCESS_RW	, NULL		, &TERM_varList);
 	TERM_addVar(mtr[0].safe_start[1]				, 0			, 1000		, "safe_count"	, "Live count before allowing throttle"	, VAR_ACCESS_R	, NULL		, &TERM_varList);
 	TERM_addVar(mtr[0].FOC.enc_offset				, 0			, 65535		, "enc_offset"	, "Encoder alignment angle"				, VAR_ACCESS_RW	, NULL		, &TERM_varList);
-	TERM_addVar(mtr[0].FOC.FOCAngle					, 0			, 65535		, "FOC_angle"	, "FOC angle now"						, VAR_ACCESS_RW	, NULL		, &TERM_varList);
+	TERM_addVar(mtr[0].FOC.base.FOCAngle					, 0			, 65535		, "FOC_angle"	, "FOC angle now"						, VAR_ACCESS_RW	, NULL		, &TERM_varList);
 	TERM_addVar(mtr[0].FOC.enc_angle				, 0			, 65535		, "enc_angle"	, "Encoder angle now"					, VAR_ACCESS_RW	, NULL		, &TERM_varList);
 	TERM_addVar(mtr[0].m.enc_counts					, 0			, 65535		, "enc_counts"	, "Encoder ABI PPR"						, VAR_ACCESS_RW	, callback	, &TERM_varList);
 	TERM_addVar(mtr[0].FOC.encoder_polarity_invert	, 0			, 1			, "enc_polarity", "Encoder polarity"					, VAR_ACCESS_RW	, NULL		, &TERM_varList);
@@ -507,10 +507,10 @@ void populate_vars(){
 		desc = TERM_addVar(mtr[0].FOC.eHz           , -HUGE_VAL , HUGE_VAL  , "ehz"         , "Motor electrical hz"                 , VAR_ACCESS_TR  , NULL         , &TERM_varList);
 		TERM_setFlag(desc, FLAG_TELEMETRY_ON);
 
-		desc = TERM_addVar(mtr[0].FOC.Idq_smoothed.d , -HUGE_VAL , HUGE_VAL  , "id"      , "Phase Idq_d smoothed"                   , VAR_ACCESS_TR  , NULL         , &TERM_varList);
+		desc = TERM_addVar(mtr[0].FOC.base.Idq_smoothed.d , -HUGE_VAL , HUGE_VAL  , "id"      , "Phase Idq_d smoothed"                   , VAR_ACCESS_TR  , NULL         , &TERM_varList);
 		TERM_setFlag(desc, FLAG_TELEMETRY_ON);
 
-		desc = TERM_addVar(mtr[0].FOC.Idq_smoothed.q , -HUGE_VAL , HUGE_VAL  , "iq"      , "Phase Idq_q smoothed"                   , VAR_ACCESS_TR  , NULL         , &TERM_varList);
+		desc = TERM_addVar(mtr[0].FOC.base.Idq_smoothed.q , -HUGE_VAL , HUGE_VAL  , "iq"      , "Phase Idq_q smoothed"                   , VAR_ACCESS_TR  , NULL         , &TERM_varList);
 		TERM_setFlag(desc, FLAG_TELEMETRY_ON);
 
 		desc = TERM_addVar(mtr[0].Raw.ADC_in_ext1    , 0		, 4096       , "adc1"   , "Raw ADC throttle"                    	, VAR_ACCESS_TR  , NULL         , &TERM_varList);
@@ -525,13 +525,13 @@ void populate_vars(){
 		desc = TERM_addVar(MESC_errors          	, -HUGE_VAL , HUGE_VAL  , "error" 	, "System errors now"       					, VAR_ACCESS_TR  , NULL			, &TERM_varList);
 		TERM_setFlag(desc, FLAG_TELEMETRY_ON);
 
-		desc = TERM_addVar(mtr[0].FOC.Vdq.q     	, -4096.0f , 4096.0f  	, "Vq"    	, "FOC_Vdq_q"     							, VAR_ACCESS_TR  , NULL         , &TERM_varList);
+		desc = TERM_addVar(mtr[0].FOC.base.Vdq.q     	, -4096.0f , 4096.0f  	, "Vq"    	, "FOC_Vdq_q"     							, VAR_ACCESS_TR  , NULL         , &TERM_varList);
 		TERM_setFlag(desc, FLAG_TELEMETRY_ON);
 
-		desc = TERM_addVar(mtr[0].FOC.Vdq.d     	, -4096.0f , 4096.0f  	, "Vd"    , "FOC_Vdq_d"     							, VAR_ACCESS_TR  , NULL         , &TERM_varList);
+		desc = TERM_addVar(mtr[0].FOC.base.Vdq.d     	, -4096.0f , 4096.0f  	, "Vd"    , "FOC_Vdq_d"     							, VAR_ACCESS_TR  , NULL         , &TERM_varList);
 		TERM_setFlag(desc, FLAG_TELEMETRY_ON);
 
-		desc = TERM_addVar(mtr[0].FOC.Idq_req.q 	, -4096.0f , 4096.0f  	, "iqreq" , "mtr[0].FOC.Idq_req.q"     					, VAR_ACCESS_TR  , NULL         , &TERM_varList);
+		desc = TERM_addVar(mtr[0].FOC.base.Idq_req.q 	, -4096.0f , 4096.0f  	, "iqreq" , "mtr[0].FOC.base.Idq_req.q"     					, VAR_ACCESS_TR  , NULL         , &TERM_varList);
 		TERM_setFlag(desc, FLAG_TELEMETRY_ON);
 
 }
@@ -581,8 +581,8 @@ void TASK_CAN_telemetry_fast(TASK_CAN_handle * handle){
 	TASK_CAN_add_float(handle	, CAN_ID_SPEED		  	, CAN_BROADCAST, motor_curr->FOC.eHz		, 0.0f					, 0);
 	TASK_CAN_add_float(handle	, CAN_ID_BUS_VOLT_CURR 	, CAN_BROADCAST, motor_curr->Conv.Vbus		, motor_curr->FOC.Ibus	, 0);
 	TASK_CAN_add_uint32(handle	, CAN_ID_STATUS	  		, CAN_BROADCAST, motor_curr->MotorState		, 0						, 0);
-	TASK_CAN_add_float(handle	, CAN_ID_MOTOR_CURRENT 	, CAN_BROADCAST, motor_curr->FOC.Idq.q		, motor_curr->FOC.Idq.d	, 0);
-	TASK_CAN_add_float(handle	, CAN_ID_MOTOR_VOLTAGE 	, CAN_BROADCAST, motor_curr->FOC.Vdq.q		, motor_curr->FOC.Vdq.d	, 0);
+	TASK_CAN_add_float(handle	, CAN_ID_MOTOR_CURRENT 	, CAN_BROADCAST, motor_curr->FOC.base.Idq.q		, motor_curr->FOC.base.Idq.d	, 0);
+	TASK_CAN_add_float(handle	, CAN_ID_MOTOR_VOLTAGE 	, CAN_BROADCAST, motor_curr->FOC.base.Vdq.q		, motor_curr->FOC.base.Vdq.d	, 0);
 
 }
 
