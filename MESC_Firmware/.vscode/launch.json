@@ -17,7 +17,7 @@
         {
             "name": "Debug with OpenOCD",
             "cwd": "${workspaceRoot}",
-            "executable": "${workspaceRoot}/MESC_F405RG/build/MESC_F405RG.elf",
+            "executable": "${workspaceRoot}/F405RG/build/F405RG.elf",
             "request": "launch",
             "type": "cortex-debug",
             "servertype": "openocd",
@@ -41,7 +41,7 @@
         {
             "name": "Debug with ST-Link",
             "cwd": "${workspaceFolder}",
-            "executable": "${workspaceRoot}/MESC_F405RG/build/MESC_F405RG.elf",
+            "executable": "${workspaceRoot}/F405RG/build/F405RG.elf",
             "request": "launch",
             "type": "cortex-debug",
             "servertype": "stlink",

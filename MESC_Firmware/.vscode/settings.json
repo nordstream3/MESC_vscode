@@ -38,7 +38,16 @@
         "compare": "c",
         "mescinterface.h": "c",
         "meschw_setup.h": "c",
-        "tterm.h": "c"
+        "tterm.h": "c",
+        "usbd_cdc_if.h": "c",
+        "stdlib.h": "c",
+        "stm32fxxx_hal.h": "c",
+        "string.h": "c",
+        "stdio.h": "c",
+        "inttypes.h": "c",
+        "main.h": "c",
+        "stm32f4xx_it.h": "c",
+        "math.h": "c"
     },
-    "cmake.sourceDirectory": "/home/jens/src/MESC_Firmware_v2/MESC_F405RG",
+    "cmake.sourceDirectory": "/home/jens/src/MESC_Firmware_v2/F405RG",
 }

@@ -3,7 +3,7 @@
         {
             "name": "ARM none eabi GCC",
             "includePath": [
-                "${workspaceFolder}/MESC_F405RG/**"
+                "${workspaceFolder}/F405RG/**"
             ],
             "defines": [
                 //"DEBUG=1"
