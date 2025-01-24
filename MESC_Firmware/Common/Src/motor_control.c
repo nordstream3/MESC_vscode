@@ -350,6 +350,12 @@ void fastLoop(MESC_motor_typedef *_motor)
 	_motor->FOC.eHz = _motor->FOC.PLL_int * _motor->FOC.pwm_frequency * 0.00001526f; // 1/65536
 
 #ifdef LOGGING
+	if (log_count) {
+		sample_n_bits();
+		log_count--;
+	}
+
+
 	if (lognow)
 	{
 		static int post_error_samples;

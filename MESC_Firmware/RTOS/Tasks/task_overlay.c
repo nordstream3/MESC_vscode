@@ -467,8 +467,6 @@ void print_index(TERMINAL_HANDLE * handle, char * name, uint32_t count, float in
 
 }
 
-static const unsigned char base64_table[65] =
-	"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /**
  * base64_encode - Base64 encode
@@ -482,38 +480,22 @@ static const unsigned char base64_table[65] =
  * nul terminated to make it easier to use as a C string. The nul terminator is
  * not included in out_len.
  */
+static const unsigned char base64_table[65] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
 size_t base64_encode(void *dest, const void *src, size_t n)
-//unsigned char * base64_encode(unsigned char *dest, const unsigned char *src, size_t len, size_t *out_len)
 {
 	unsigned char *pos;
 	const unsigned char *end, *in;
-	//size_t olen;
-	////int line_len;
-
-	//olen = n * 4 / 3 + 4; /* 3-byte blocks to 4-byte */
-	//olen += olen / 72; /* line feeds */
-	//olen++; /* nul termination */
-	//if (olen < len)
-	//	return NULL; /* integer overflow */
-	//out = dest; //os_malloc(olen);
-	//if (out == NULL)
-	//	return NULL;
 
 	end = src + n;
 	in = src;
 	pos = dest;
-	//line_len = 0;
 	while (end - in >= 3) {
 		*pos++ = base64_table[in[0] >> 2];
 		*pos++ = base64_table[((in[0] & 0x03) << 4) | (in[1] >> 4)];
 		*pos++ = base64_table[((in[1] & 0x0f) << 2) | (in[2] >> 6)];
 		*pos++ = base64_table[in[2] & 0x3f];
 		in += 3;
-		//line_len += 4;
-		/*if (line_len >= 72) {
-			*pos++ = '\n';
-			line_len = 0;
-		}*/
 	}
 
 	if (end - in) {
@@ -526,23 +508,15 @@ size_t base64_encode(void *dest, const void *src, size_t n)
 			*pos++ = base64_table[(in[1] & 0x0f) << 2];
 		}
 		*pos++ = '=';
-		//line_len += 4;
 	}
-
-	//if (line_len)
-	//	*pos++ = '\n';
 
 	*pos = '\0';
 
 	return pos - (unsigned char*)dest;
-
-	/*if (out_len)
-		*out_len = pos - out;
-	return out;*/
 }
 
 void log_fastloop(TERMINAL_HANDLE * handle){
-#ifndef DASH
+/*#ifndef DASH
 	lognow = 1;
 	vTaskDelay(100);
 
@@ -643,60 +617,214 @@ void log_fastloop(TERMINAL_HANDLE * handle){
 	}
 
 
-	/*ttprintf("time,");
-	ttprintf("Vbus.V.y1,");
-	ttprintf("Iu.I_phase.y1,");
-	ttprintf("Iv.I_phase.y1,");
-	ttprintf("Iw.I_phase.y1,");
-	ttprintf("Vd.V_dq.y1,");
-	ttprintf("Vq.V_dq.y1,");
-	ttprintf("angle.misc.y1,");
-	ttprintf("}");
-	ttprintf("\a");
-
-	float time = 0.0f;
-	for(uint32_t j=0;j<LOGLENGTH;j++) {
-
-		ttprintf("\033]52;c;[");
-		ttprintf("%.2f,", time);
-		time += mtr[0].FOC.pwm_period;
-		ttprintf("%.2f,", sampled_vars.Vbus[i]);
-		ttprintf("%.2f,", sampled_vars.Iu[i]);
-		ttprintf("%.2f,", sampled_vars.Iv[i]);
-		ttprintf("%.2f,", sampled_vars.Iw[i]);
-		ttprintf("%.2f,", sampled_vars.Vd[i]);
-		ttprintf("%.2f,", sampled_vars.Vq[i]);
-		ttprintf("%lu,", sampled_vars.angle[i]);
-
-		// HFI logging added by JEO
-		ttprintf("%lu,", sampled_vars.flags[i]);
-		ttprintf("%.2f,", sampled_vars.didq_d[i]);
-		ttprintf("%.2f,", sampled_vars.didq_q[i]);
-		float mag45 = sqrtf(sampled_vars.didq_d[i] * sampled_vars.didq_d[i] + sampled_vars.didq_q[i] * sampled_vars.didq_q[i]);
-		ttprintf("%.2f,", mag45);
-		ttprintf("%.2f,", sampled_vars.HFI_int_err[i]);
-		ttprintf("]\a");
-
-		i++;
-		if(i == LOGLENGTH){
-			i=0;
-		}
-	}*/
-
 	vTaskDelay(100);
 	lognow = 1;
-#endif
+#endif*/
 }
+
+
+void log_TaskProc2(void *pvParameters) {
+	/*
+	 * Add and initialize local variables that are allocated on the Task stack
+	 * the the section below.
+	 */
+	/* `#START TASK_VARIABLES` */
+
+    TERMINAL_HANDLE * handle = pvParameters;
+
+    port_str * port = handle->port;
+
+	/* `#END` */
+
+	/*
+	 * Add the task initialzation code in the below merge region to be included
+	 * in the task.
+	 */
+	/* `#START TASK_INIT_CODE` */
+	// 10 seconds of logging
+	uint32_t log_max = (uint32_t)(mtr[0].FOC.pwm_frequency * 10.0f);
+
+	unsigned char encoded[256];
+	MESC_motor_typedef * motor_curr = &mtr[0];
+	uint8_t buf_size = sample_init(motor_curr, log_max);
+
+	// 4 bytes: float (f)
+	// 2 bytes: int16 (h)
+	// 2 bytes: uint16 (H)
+	// 4 bytes: int32 (i)
+	// 4 bytes: uint32 (I)
+
+	ttprintf("\033]52;c;");
+	const unsigned char* header = getLogHeader();
+	base64_encode(encoded, header, strlen((const char*)header));
+	ttprintf((const char*)encoded);
+	ttprintf("\a");
+
+
+    while (log_count) {
+		/* `#START TASK_LOOP_CODE` */
+
+		// Wait for data chunk ready
+		uint8_t* data;
+		while (!getDataChunk(&data) && log_count)
+	        vTaskDelay(1);
+
+		if (log_count) {
+			xSemaphoreTake(port->term_block, portMAX_DELAY);
+
+			ttprintf("\033]52;c;");
+			base64_encode(encoded, data, buf_size);
+			ttprintf((const char*)encoded);
+			ttprintf("\a");
+
+			xSemaphoreGive(port->term_block);
+		}
+	}
+}
+
+
+bool flag_stream_log = false;
+void log_TaskProc(void *pvParameters) {
+	/*
+	 * Add and initialize local variables that are allocated on the Task stack
+	 * the the section below.
+	 */
+	/* `#START TASK_VARIABLES` */
+
+    TERMINAL_HANDLE * handle = pvParameters;
+
+    port_str * port = handle->port;
+
+	/* `#END` */
+
+	/*
+	 * Add the task initialzation code in the below merge region to be included
+	 * in the task.
+	 */
+	/* `#START TASK_INIT_CODE` */
+	unsigned char src[256];
+	unsigned char dest[256];
+
+	// 4 bytes: float (f)
+	// 2 bytes: int16 (h)
+	// 2 bytes: uint16 (H)
+	// 4 bytes: int32 (i)
+	// 4 bytes: uint32 (I)
+
+	// 10 seconds of logging
+	uint32_t log_max = (uint32_t)(mtr[0].FOC.pwm_frequency * 10.0f);
+
+	ttprintf("\033]52;c;");
+	const unsigned char header[] = "<header> Vbus f,Iu f,Iv f,Iw f,Vd f,Vq f,angle H,flags H,didq_d f,didq_q f,mag45 f,HFI_int_err f";
+	base64_encode(dest, header, strlen((const char*)header));
+	ttprintf((const char*)dest);
+	ttprintf("\a");
+
+	// This only works when LOGLENGTH = 256 (size_of(uint8_t))
+	const uint8_t log_len = 0xFF/2;
+	uint8_t i_now = (uint8_t)sampled_vars.current_sample;
+	uint8_t i_0 = i_now - log_len;
+	uint8_t dist;
+	/* `#END` */
+
+
+    for (uint32_t j=0; j<log_max;) {
+		/* `#START TASK_LOOP_CODE` */
+
+		if (flag_stream_log == false)
+			break;
+
+		while (true) {
+			i_now = (uint8_t)sampled_vars.current_sample;
+			dist = i_now - i_0;
+			if (dist >= log_len)
+				break;
+	        vTaskDelay(0);
+		}
+
+        xSemaphoreTake(port->term_block, portMAX_DELAY);
+
+		size_t sz;
+		for(uint8_t i=i_0; i!=i_now; i++) {
+
+			unsigned char *ptr = src;
+			ttprintf("\033]52;c;");
+
+			sz = sizeof(sampled_vars.Vbus[i]);
+			ptr = memcpy(ptr, &sampled_vars.Vbus[i], sz);
+			ptr += sz;
+
+			sz = sizeof(sampled_vars.Iu[i]);
+			ptr = memcpy(ptr, &sampled_vars.Iu[i], sz);
+			ptr += sz;
+
+			sz = sizeof(sampled_vars.Iv[i]);
+			ptr = memcpy(ptr, &sampled_vars.Iv[i], sz);
+			ptr += sz;
+
+			sz = sizeof(sampled_vars.Iw[i]);
+			ptr = memcpy(ptr, &sampled_vars.Iw[i], sz);
+			ptr += sz;
+
+			sz = sizeof(sampled_vars.Vd[i]);
+			ptr = memcpy(ptr, &sampled_vars.Vd[i], sz);
+			ptr += sz;
+
+			sz = sizeof(sampled_vars.Vq[i]);
+			ptr = memcpy(ptr, &sampled_vars.Vq[i], sz);
+			ptr += sz;
+
+			sz = sizeof(sampled_vars.angle[i]);
+			ptr = memcpy(ptr, &sampled_vars.angle[i], sz);
+			ptr += sz;
+
+			// HFI logging added by JEO
+			/*sz = sizeof(sampled_vars.flags[i]);
+			ptr = memcpy(ptr, &sampled_vars.flags[i], sz);
+			ptr += sz;
+
+			sz = sizeof(sampled_vars.didq_d[i]);
+			ptr = memcpy(ptr, &sampled_vars.didq_d[i], sz);
+			ptr += sz;
+
+			sz = sizeof(sampled_vars.didq_q[i]);
+			ptr = memcpy(ptr, &sampled_vars.didq_q[i], sz);
+			ptr += sz;
+
+			float mag45 = sqrtf(sampled_vars.didq_d[i] * sampled_vars.didq_d[i] + sampled_vars.didq_q[i] * sampled_vars.didq_q[i]);
+			sz = sizeof(mag45);
+			ptr = memcpy(ptr, &mag45, sz);
+			ptr += sz;
+
+			sz = sizeof(sampled_vars.HFI_int_err[i]);
+			ptr = memcpy(ptr, &sampled_vars.HFI_int_err[i], sz);
+			ptr += sz;*/
+
+			base64_encode(dest, src, ptr-src);
+			ttprintf((const char*)dest);
+			ttprintf("\a");
+		}
+
+        xSemaphoreGive(port->term_block);
+
+		j += dist;
+		i_0 = i_now;
+	}
+
+	flag_stream_log = false;
+}
+
 
 /*****************************************************************************
 *
 ******************************************************************************/
+TaskHandle_t log_task_xHandle;
 uint8_t CMD_log(TERMINAL_HANDLE * handle, uint8_t argCount, char ** args){
 
     bool flag_list = false;
     bool flag_reset = false;
     bool flag_fastloop = false;
-
+	
     port_str * port = handle->port;
 
 	for(int i=0;i<argCount;i++){
@@ -729,14 +857,18 @@ uint8_t CMD_log(TERMINAL_HANDLE * handle, uint8_t argCount, char ** args){
 			ttprintf("\t -l\t List vars\r\n");
 			ttprintf("\t -s\t Log speed [ms]\r\n");
 			ttprintf("\t -fl\t Print log\r\n");
+			ttprintf("\t -st\t Continuous stream log\r\n");
 			return TERM_CMD_EXIT_SUCCESS;
 		}
 		if(strcmp(args[i], "-fl")==0){
 			flag_fastloop = true;
 		}
+		if(strcmp(args[i], "-st")==0){
+			flag_stream_log = !flag_stream_log;
+		}
 	}
 
-	if(flag_list){
+	if (flag_list){
 		uint32_t currPos = 0;
 		uint32_t count=0;
 		TermVariableDescriptor * head = handle->varHandle->varListHead;
@@ -756,7 +888,7 @@ uint8_t CMD_log(TERMINAL_HANDLE * handle, uint8_t argCount, char ** args){
 	    ttprintf("EOL\r\n");
 	}
 
-	if(flag_reset){
+	if (flag_reset){
 		uint32_t currPos = 0;
 		TermVariableDescriptor * head = handle->varHandle->varListHead;
 		TermVariableDescriptor * currVar = handle->varHandle->varListHead->nextVar;
@@ -771,7 +903,7 @@ uint8_t CMD_log(TERMINAL_HANDLE * handle, uint8_t argCount, char ** args){
 		ttprintf("Log list reset...\r\n");
 	}
 
-	if(flag_fastloop){
+	if (flag_fastloop){
 	#ifdef LOGGING
 		log_fastloop(handle);
 	#else
@@ -779,9 +911,18 @@ uint8_t CMD_log(TERMINAL_HANDLE * handle, uint8_t argCount, char ** args){
 	#endif
 	}
 
+	if (flag_stream_log){
+	#ifdef LOGGING
+
+		TaskHandle_t log_task_xHandle = NULL;
+		BaseType_t res = xTaskCreate( log_TaskProc2, "log_task", 1024, handle, osPriorityHigh, &log_task_xHandle );
+		configASSERT( log_task_xHandle );
+		return res == pdPASS? TERM_CMD_EXIT_SUCCESS : TERM_CMD_EXIT_ERROR;
+		//return CMD_start_log_task(handle);
+	#else
+		ttprintf("Stream logging not enabled in firmware\r\n");
+	#endif
+	}
 
     return TERM_CMD_EXIT_SUCCESS;
 }
-
-
-

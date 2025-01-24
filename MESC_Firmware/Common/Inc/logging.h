@@ -1,6 +1,7 @@
 #ifndef LOGGING_H
 #define LOGGING_H
 
+#include <stdbool.h>
 #include "hw_setup.h"
 
 //#define LOGGING
@@ -26,11 +27,11 @@ typedef struct {
 	uint16_t angle[LOGLENGTH];
 
 	// HFI logging added by JEO
-	uint16_t flags[LOGLENGTH];
+	/*uint16_t flags[LOGLENGTH];
 	float didq_d[LOGLENGTH];
 	float didq_q[LOGLENGTH];
 	float HFI_int_err[LOGLENGTH];
-	uint32_t angle_flags[LOGLENGTH];
+	uint32_t angle_flags[LOGLENGTH];*/
 
 	uint32_t current_sample;
 
@@ -42,5 +43,15 @@ extern sampled_vars_t sampled_vars;
 
 void logVars(MESC_motor_typedef *_motor);
 void printSamples(UART_HandleTypeDef *uart, DMA_HandleTypeDef *dma);
+
+
+extern volatile uint32_t log_count;
+
+uint8_t sample_init(MESC_motor_typedef *_motor, uint32_t log_time);
+//void sample_4bit();
+void sample_n_bits();
+const unsigned char* getLogHeader();
+bool getDataChunk(uint8_t** data);
+
 
 #endif
