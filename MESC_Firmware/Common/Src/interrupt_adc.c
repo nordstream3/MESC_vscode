@@ -5,25 +5,6 @@
 #include "input_vars.h"
 #include "conversions.h"
 
-/*#include "hw_setup.h"
-#include "motor_control.h"
-#include "sin_lut.h"
-#include "motor.h"
-#include "temperature.h"
-#include "error.h"
-#include "position.h"
-#include "motorinstance.h"
-#include "observers.h"
-
-#ifdef MESC_UART_USB
-#include "usbd_cdc_if.h"
-#endif
-
-
-#include <math.h>
-#include <stdlib.h>*/
-
-
 
 // This should be the function needed to be added into the PWM interrupt
 // for MESC to run. Ensure that it is followed by the clear timer update

@@ -3,6 +3,65 @@
 
 #include "stm32fxxx_hal.h"
 
+
+/*
+   Voltage PWM Cycle with interrupt triggers
+   
+   Voltage (V)
+     |     ____|____            ____|____            ____|____
+     |    |         |          |         |          |         |
+     |____|         |__________|         |__________|         |
+     |
+     |    ↑         ↑          ↑         ↑
+     |    |         |          |         |
+     |    |         |          |         |
+     | RunHFI               RunHFI
+     | writePWM  writePWM   writePWM  writePWM
+     | (rising)  (falling)  (rising)  (falling)
+     |_________________________________________
+                                                  Time →
+
+
+Summary of Functionality
+------------------------
+* PWM in Center-Aligned Mode
+* If FASTLED is defined, this sets a debug GPIO pin (FASTLEDIO) high for oscilloscope
+* If downcounting, only writePWM() is executed, which updates the PWM duty cycle for the next switching period.
+* If upcounting, both RunHFI() and writePWM() are executed. HFI function is ONLY at the start of a pulse.
+
+
+Summary of Functionality
+------------------------
+* This function executes during every PWM timer update event.
+* It handles FOC (Field-Oriented Control) calculations.
+* It distinguishes between upcounting and downcounting in center-aligned PWM mode.
+* It updates the PWM duty cycle (writePWM(_motor)).
+* It executes high-frequency injection (HFI) logic when upcounting.
+* It measures execution time for performance monitoring.
+* It includes debugging signals using FASTLED for oscilloscope analysis.
+
+When is This Function Called?
+-----------------------------
+* This function is executed inside the PWM interrupt handler.
+* It is called twice per PWM cycle due to center-aligned PWM mode:
+Once during upcounting (rising edge)
+Once during downcounting (falling edge)
+This ensures that motor control calculations and PWM updates are synchronized with the PWM cycle for smooth and efficient motor operation.
+*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // Forward declaration of MESC_motor_typedef
 typedef struct MESC_motor_typedef MESC_motor_typedef;
 
@@ -40,7 +99,7 @@ typedef struct  {
   float pwm_frequency;
   float pwm_period;
   MESCiq_s Idq_req;							//The input to the PI controller. Load this with the values you want.
-  uint16_t FOCAngle;
+  uint16_t FOCAngle;         // JEO: I guess 0-2*pi translates to 0-65535, so it flips to zero at 65336
   float PLL_error;
   float PLL_int;
   float PLL_kp;

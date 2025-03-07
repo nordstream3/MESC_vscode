@@ -2,7 +2,6 @@
 #define HW_SETUP_H
 
 #include "stm32fxxx_hal.h"
-//#include "MESCfoc.h"
 
 // Forward declaration of MESC_motor_typedef
 typedef struct MESC_motor_typedef MESC_motor_typedef;

@@ -69,7 +69,8 @@ typedef struct{
 void task_cli_init(port_str * port);
 void task_cli_kill(port_str * port);
 
-void putbuffer_can(unsigned char *buf, unsigned int len, port_str * port);
+void putbuffer_usb(unsigned char *buf, unsigned int len, port_str * port);
+//void putbuffer_can(unsigned char *buf, unsigned int len, port_str * port);
 
 #endif /* TASK_LED_H_ */
 

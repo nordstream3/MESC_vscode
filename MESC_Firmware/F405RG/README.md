@@ -6,6 +6,9 @@
 # Terminal
 sudo chmod a+rw /dev/ttyACM0;putty -serial /dev/ttyACM0
 
+# Terminal with logging to file
+sudo chmod a+rw /dev/ttyACM0;putty -serial /dev/ttyACM0 -sessionlog /path/to/logfile.log
+
 # Clean
 cd build
 rm -r *
@@ -107,3 +110,34 @@ set control_mode 1
 
 set speed_req 300
 set speed_req 0
+
+
+# Errors
+
+This is implemented in "error.c" as:
+
+MESC_errors |= (1<<(error_code-1))
+
+Error codes are found in "error.h"
+
+# Flash memory corrupted
+
+If CRC validation fails when saving, flash memory can be deleted by commands:
+
+save -d
+
+or:
+
+save -h
+
+
+# Terminals and logging (experimental)
+
+USB port setup:
+stty -F /dev/ttyACM0 raw -echo -echoe -echok
+
+Save binary data from MESC:
+dd if=/dev/ttyACM0 of=output.bin bs=1M
+
+Send Commands:
+printf "log -st\r" > /dev/ttyACM0

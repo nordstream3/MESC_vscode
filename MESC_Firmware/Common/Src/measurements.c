@@ -64,7 +64,7 @@ void measureResistance(MESC_motor_typedef *_motor)
 		_motor->FOC.Idq_req.q = 0.0f;
 		_motor->FOC.FOCAngle = 0;
 
-		_motor->hfi.inject = 0; // flag to not inject at SVPWM top
+		_motor->hfi.do_injection = 0; // flag to not inject at SVPWM top
 
 		MESCFOC(_motor);
 		//      writePWM(_motor);
@@ -87,7 +87,7 @@ void measureResistance(MESC_motor_typedef *_motor)
 		_motor->FOC.Idq_req.d = _motor->meas.measure_current;
 		_motor->FOC.Idq_req.q = 0.0f;
 
-		_motor->hfi.inject = 0;
+		_motor->hfi.do_injection = 0;
 		MESCFOC(_motor);
 		//      writePWM(_motor);
 	}
@@ -95,7 +95,7 @@ void measureResistance(MESC_motor_typedef *_motor)
 	else if (_motor->meas.PWM_cycles < 40000)
 	{ // Lower setpoint
 		_motor->FOC.Idq_req.d = 0.20f * _motor->meas.measure_current;
-		_motor->hfi.inject = 0;
+		_motor->hfi.do_injection = 0;
 		MESCFOC(_motor);
 		//      writePWM(_motor);
 
@@ -109,7 +109,7 @@ void measureResistance(MESC_motor_typedef *_motor)
 	else if (_motor->meas.PWM_cycles < 45000)
 	{ // Upper setpoint stabilisation
 		_motor->FOC.Idq_req.d = _motor->meas.measure_current;
-		_motor->hfi.inject = 0;
+		_motor->hfi.do_injection = 0;
 		MESCFOC(_motor);
 		//      writePWM(_motor);
 	}
@@ -117,7 +117,7 @@ void measureResistance(MESC_motor_typedef *_motor)
 	else if (_motor->meas.PWM_cycles < 50000)
 	{ // Upper setpoint
 		_motor->FOC.Idq_req.d = _motor->meas.measure_current;
-		_motor->hfi.inject = 0;
+		_motor->hfi.do_injection = 0;
 		MESCFOC(_motor);
 		//      writePWM(_motor);
 
@@ -150,19 +150,19 @@ void measureResistance(MESC_motor_typedef *_motor)
 	{
 		// generateBreak();
 		_motor->HFIType = HFI_TYPE_SPECIAL;
-		_motor->hfi.inject = 1; // flag to the SVPWM writer to inject at top
+		_motor->hfi.do_injection = 1; // flag to the SVPWM writer to inject at top
 		_motor->hfi.special_injectionVd = _motor->meas.measure_voltage;
 		_motor->hfi.special_injectionVq = 0.0f;
 
 		_motor->FOC.Vdq.d = _motor->meas.Vd_temp;
 		_motor->FOC.Vdq.q = 0.0f;
 
-		if (_motor->hfi.inject_high_low_now == 1)
+		if (_motor->hfi.injection_sign > 0)
 		{
 			_motor->meas.top_I_L = _motor->meas.top_I_L + _motor->FOC.Idq.d;
 			_motor->meas.count_top++;
 		}
-		else if (_motor->hfi.inject_high_low_now == 0)
+		else
 		{
 			_motor->meas.bottom_I_L = _motor->meas.bottom_I_L + _motor->FOC.Idq.d;
 			_motor->meas.count_bottom++;
@@ -194,16 +194,16 @@ void measureResistance(MESC_motor_typedef *_motor)
 		//			generateBreak();
 		_motor->hfi.special_injectionVd = 0.0f;
 		_motor->hfi.special_injectionVq = _motor->meas.measure_voltage;
-		_motor->hfi.inject = 1;					  // flag to the SVPWM writer to update at top
+		_motor->hfi.do_injection = 1;					  // flag to the SVPWM writer to update at top
 		_motor->FOC.Vdq.d = _motor->meas.Vd_temp; // Vd_temp to keep it aligned with D axis
 		_motor->FOC.Vdq.q = 0.0f;
 
-		if (_motor->hfi.inject_high_low_now == 1)
+		if (_motor->hfi.injection_sign > 0)
 		{
 			_motor->meas.top_I_Lq = _motor->meas.top_I_Lq + _motor->FOC.Idq.q;
 			_motor->meas.count_topq++;
 		}
-		else if (_motor->hfi.inject_high_low_now == 0)
+		else
 		{
 			_motor->meas.bottom_I_Lq = _motor->meas.bottom_I_Lq + _motor->FOC.Idq.q;
 			_motor->meas.count_bottomq++;
@@ -220,7 +220,7 @@ void measureResistance(MESC_motor_typedef *_motor)
 
 		_motor->MotorState = MOTOR_STATE_IDLE;
 
-		_motor->hfi.inject = 0; // flag to the SVPWM writer stop injecting at top
+		_motor->hfi.do_injection = 0; // flag to the SVPWM writer stop injecting at top
 		_motor->hfi.special_injectionVd = 0.0f;
 		_motor->hfi.special_injectionVq = 0.0f;
 		_motor->hfi.Vd_injectionV = 0.0f;
@@ -406,7 +406,7 @@ void getkV(MESC_motor_typedef *_motor)
 {
 	_motor->meas.previous_HFI_type = _motor->HFIType;
 	_motor->HFIType = HFI_TYPE_NONE;
-	_motor->hfi.inject = 0;
+	_motor->hfi.do_injection = 0;
 
 	static int cycles = 0;
 	static HFI_type_e old_HFI_type;

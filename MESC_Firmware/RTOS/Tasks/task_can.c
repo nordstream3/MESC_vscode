@@ -379,9 +379,9 @@ void TASK_CAN_init(port_str * port, char * short_name){
 	handle->rx_queue = xQueueCreate(128, sizeof(TASK_CAN_packet));
 	handle->tx_queue = xQueueCreate(128, sizeof(TASK_CAN_packet));
 
-	xTaskCreate(TASK_CAN_rx, "task_rx_can", 256, (void*)port, osPriorityAboveNormal, &handle->rx_task_handle);
-	xTaskCreate(TASK_CAN_tx, "task_tx_can", 256, (void*)port, osPriorityAboveNormal, &handle->tx_task_handle);
-	xTaskCreate(TASK_CAN_telemetry, "can_metry", 256, (void*)port, osPriorityAboveNormal, NULL);
+	xTaskCreate(TASK_CAN_rx, "task_rx_can", 256, (void*)port, osPriorityNormal/*osPriorityAboveNormal*/, &handle->rx_task_handle);
+	xTaskCreate(TASK_CAN_tx, "task_tx_can", 256, (void*)port, osPriorityNormal/*osPriorityAboveNormal*/, &handle->tx_task_handle);
+	xTaskCreate(TASK_CAN_telemetry, "can_metry", 256, (void*)port, osPriorityNormal/*osPriorityAboveNormal*/, NULL);
 }
 
 

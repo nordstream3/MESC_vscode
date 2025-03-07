@@ -96,7 +96,7 @@ void fastLoop(MESC_motor_typedef *_motor)
 			//			writePWM(_motor);
 			break;
 		case MOTOR_SENSOR_MODE_HALL:
-			_motor->hfi.inject = 0;
+			_motor->hfi.do_injection = 0;
 			hallAngleEstimator();
 			angleObserver(_motor);
 			MESCFOC(_motor);
@@ -349,13 +349,17 @@ void fastLoop(MESC_motor_typedef *_motor)
 	_motor->FOC.PLL_int = _motor->FOC.PLL_int + _motor->FOC.PLL_ki * _motor->FOC.PLL_error;
 	_motor->FOC.eHz = _motor->FOC.PLL_int * _motor->FOC.pwm_frequency * 0.00001526f; // 1/65536
 
-#ifdef LOGGING
+#ifdef STREAM_LOGGING
 	if (log_count) {
-		sample_n_bits();
+
+		if ((log_count % LOG_INTERVAL) == 0)
+			sample_n_bits_2_4_8();
+
 		log_count--;
 	}
+#endif
 
-
+#ifdef LOGGING
 	if (lognow)
 	{
 		static int post_error_samples;

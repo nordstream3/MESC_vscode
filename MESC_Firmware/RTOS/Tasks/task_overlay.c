@@ -515,6 +515,87 @@ size_t base64_encode(void *dest, const void *src, size_t n)
 	return pos - (unsigned char*)dest;
 }
 
+size_t base64_encode_asm(void *dest, const void *src, size_t n) {
+    unsigned char *pos = (unsigned char *)dest;
+    const unsigned char *in = (const unsigned char *)src;
+    const unsigned char *end = in + n;
+
+    while (end - in >= 3) {
+        uint32_t chunk = (in[0] << 16) | (in[1] << 8) | in[2];
+
+        __asm volatile (
+            "lsl r3, %[chunk], #6     \n"  // r3 = chunk << 6 (prepare for masking)
+            "lsr r3, r3, #6           \n"  // r3 = chunk >> 6
+            "and r0, %[chunk], #0xFC0000  \n"  // Extract first 6 bits
+            "lsr r0, r0, #18          \n"
+            "ldrb r0, [%[table], r0]  \n"
+            "strb r0, [%[out]], #1    \n"
+
+            "and r1, r3, #0x3F00      \n"  // Extract second 6 bits
+            "lsr r1, r1, #8           \n"
+            "ldrb r1, [%[table], r1]  \n"
+            "strb r1, [%[out]], #1    \n"
+
+            "and r2, r3, #0xFC        \n"  // Extract third 6 bits
+            "lsr r2, r2, #2           \n"
+            "ldrb r2, [%[table], r2]  \n"
+            "strb r2, [%[out]], #1    \n"
+
+            "and r3, %[chunk], #0x3F  \n"  // Extract fourth 6 bits
+            "ldrb r3, [%[table], r3]  \n"
+            "strb r3, [%[out]], #1    \n"
+            : [out] "+r" (pos)
+            : [chunk] "r" (chunk), [table] "r" (base64_table)
+            : "r0", "r1", "r2", "r3", "memory"
+        );
+
+        in += 3;
+    }
+
+    if (end - in) {
+        uint8_t tail[3] = {0, 0, 0};
+        tail[0] = in[0];
+        if (end - in == 2) tail[1] = in[1];
+
+        uint32_t chunk = (tail[0] << 16) | (tail[1] << 8);
+
+        __asm volatile (
+            "and r0, %[chunk], #0xFC0000  \n"
+            "lsr r0, r0, #18          \n"
+            "ldrb r0, [%[table], r0]  \n"
+            "strb r0, [%[out]], #1    \n"
+
+            "and r1, %[chunk], #0x3F00      \n"
+            "lsr r1, r1, #8           \n"
+            "ldrb r1, [%[table], r1]  \n"
+            "strb r1, [%[out]], #1    \n"
+
+            "cmp %[len], #1           \n"
+            "beq encode_padding       \n"
+
+            "and r2, %[chunk], #0xFC        \n"
+            "lsr r2, r2, #2           \n"
+            "ldrb r2, [%[table], r2]  \n"
+            "strb r2, [%[out]], #1    \n"
+            "b end_encoding           \n"
+
+        "encode_padding:            \n"
+            "mov r2, #61              \n"  // ASCII '='
+            "strb r2, [%[out]], #1    \n"
+
+        "end_encoding:              \n"
+            "mov r3, #61              \n"  // ASCII '='
+            "strb r3, [%[out]], #1    \n"
+            : [out] "+r" (pos)
+            : [chunk] "r" (chunk), [table] "r" (base64_table), [len] "r" (end - in)
+            : "r0", "r1", "r2", "r3", "memory"
+        );
+    }
+
+    *pos = '\0';
+    return pos - (unsigned char*)dest;
+}
+
 void log_fastloop(TERMINAL_HANDLE * handle){
 /*#ifndef DASH
 	lognow = 1;
@@ -644,9 +725,9 @@ void log_TaskProc2(void *pvParameters) {
 	// 10 seconds of logging
 	uint32_t log_max = (uint32_t)(mtr[0].FOC.pwm_frequency * 10.0f);
 
-	unsigned char encoded[256];
+	//unsigned char encoded[256];
 	MESC_motor_typedef * motor_curr = &mtr[0];
-	uint8_t buf_size = sample_init(motor_curr, log_max);
+	uint8_t buf_size = sample_init(motor_curr);
 
 	// 4 bytes: float (f)
 	// 2 bytes: int16 (h)
@@ -655,31 +736,32 @@ void log_TaskProc2(void *pvParameters) {
 	// 4 bytes: uint32 (I)
 
 	ttprintf("\033]52;c;");
-	const unsigned char* header = getLogHeader();
-	base64_encode(encoded, header, strlen((const char*)header));
-	ttprintf((const char*)encoded);
+	char* header = getLogHeader();
+	//base64_encode(encoded, header, strlen((const char*)header));
+	ttprintf((const char*)header);
 	ttprintf("\a");
 
+	//#define OSC_52_TAG_SIZE 7
+	//memcpy(encoded, "\033]52;c;", OSC_52_TAG_SIZE);
+	start_sample(log_max);
 
     while (log_count) {
 		/* `#START TASK_LOOP_CODE` */
 
 		// Wait for data chunk ready
-		uint8_t* data;
-		while (!getDataChunk(&data) && log_count)
-	        vTaskDelay(1);
+		uint8_t* data = getDataChunk();
 
 		if (log_count) {
-			xSemaphoreTake(port->term_block, portMAX_DELAY);
+			//size_t b64_buf_size = base64_encode(&encoded[OSC_52_TAG_SIZE], data, buf_size);
+			//encoded[OSC_52_TAG_SIZE + b64_buf_size] = '\a';
+			//putbuffer_usb(encoded, OSC_52_TAG_SIZE+b64_buf_size+1, port);
 
-			ttprintf("\033]52;c;");
-			base64_encode(encoded, data, buf_size);
-			ttprintf((const char*)encoded);
-			ttprintf("\a");
-
-			xSemaphoreGive(port->term_block);
+			putbuffer_usb(data-OSC_52_TAG_SIZE, OSC_52_TAG_SIZE+buf_size+1, port);
 		}
 	}
+
+	// Task decides to terminate itself
+	vTaskDelete(NULL);
 }
 
 
@@ -912,10 +994,10 @@ uint8_t CMD_log(TERMINAL_HANDLE * handle, uint8_t argCount, char ** args){
 	}
 
 	if (flag_stream_log){
-	#ifdef LOGGING
+	#ifdef STREAM_LOGGING
 
 		TaskHandle_t log_task_xHandle = NULL;
-		BaseType_t res = xTaskCreate( log_TaskProc2, "log_task", 1024, handle, osPriorityHigh, &log_task_xHandle );
+		BaseType_t res = xTaskCreate( log_TaskProc2, "log_task", 1024, handle, osPriorityNormal+2, &log_task_xHandle );
 		configASSERT( log_task_xHandle );
 		return res == pdPASS? TERM_CMD_EXIT_SUCCESS : TERM_CMD_EXIT_ERROR;
 		//return CMD_start_log_task(handle);

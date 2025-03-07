@@ -47,7 +47,15 @@
         "inttypes.h": "c",
         "main.h": "c",
         "stm32f4xx_it.h": "c",
-        "math.h": "c"
+        "math.h": "c",
+        "stm32f4xx_hal.h": "c",
+        "motorinstance.h": "c",
+        "foc.h": "c",
+        "input_vars.h": "c",
+        "hw_setup.h": "c",
+        "interrupt_adc.h": "c",
+        "type_traits": "c",
+        "init.h": "c"
     },
-    "cmake.sourceDirectory": "/home/jens/src/MESC_Firmware_v2/F405RG",
+    "cmake.sourceDirectory": "/home/jens/src/MESC_vscode/MESC_Firmware/F405RG",
 }

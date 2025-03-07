@@ -295,7 +295,7 @@ void task_cli(void * argument)
 
 void task_cli_init(port_str * port){
 	if(port->task_handle == NULL){
-		xTaskCreate(task_cli, "tskCLI", 1024, (void*)port, osPriorityNormal, &port->task_handle);
+		xTaskCreate(task_cli, "tskCLI", 1024, (void*)port, osPriorityNormal+1, &port->task_handle);
 	}
 }
 

@@ -142,7 +142,7 @@ void flux_observer(MESC_motor_typedef *_motor)
 	}
 #endif
 
-	if (_motor->hfi.inject == 0)
+	if (_motor->hfi.do_injection == 0)
 	{
 		_motor->FOC.FOCAngle = (uint16_t)(32768.0f + 10430.0f * fast_atan2(_motor->FOC.flux_b, _motor->FOC.flux_a)) - 32768;
 	}
@@ -285,7 +285,7 @@ static int plusminus = 1;
 
 void LRObserver(MESC_motor_typedef *_motor)
 {
-	if ((fabsf(_motor->FOC.eHz) > 0.005f * _motor->FOC.pwm_frequency) && (_motor->hfi.inject == 0))
+	if ((fabsf(_motor->FOC.eHz) > 0.005f * _motor->FOC.pwm_frequency) && (_motor->hfi.do_injection == 0))
 	{
 
 		R_observer = (Vd_obs_high_filt - Vd_obs_low_filt) / (2.0f * LR_OBS_CURRENT);
@@ -335,7 +335,7 @@ void LRObserver(MESC_motor_typedef *_motor)
 void LRObserverCollect(MESC_motor_typedef *_motor)
 {
 	LR_collect_count++;
-	if ((fabsf(_motor->FOC.eHz) > 0.005f * _motor->FOC.pwm_frequency) && (_motor->hfi.inject == 0))
+	if ((fabsf(_motor->FOC.eHz) > 0.005f * _motor->FOC.pwm_frequency) && (_motor->hfi.do_injection == 0))
 	{
 		if (plusminus == 1)
 		{

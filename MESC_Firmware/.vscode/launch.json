@@ -11,7 +11,7 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "args": [
-                "/home/jens/Downloads/mesc3.log" //"${command:pickArgs}"
+                "${workspaceRoot}/output.bin" //"${command:pickArgs}"
             ]
         },
         {

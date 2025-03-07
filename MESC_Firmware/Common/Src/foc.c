@@ -270,7 +270,7 @@ void writePWM(MESC_motor_typedef *_motor)
 	// transforms, we would like to use the most up to date versions(or even the
 	// next predicted version...)
 #ifdef INTERPOLATE_V7_ANGLE
-	if ((fabsf(foc.eHz) > 0.005f * foc.pwm_frequency) && (_motor->hfi.inject == 0))
+	if ((fabsf(foc.eHz) > 0.005f * foc.pwm_frequency) && (_motor->hfi.do_injection == 0))
 	{
 		// Only run it when there is likely to be good speed measurement stability and
 		// actual utility in doing it. At low speed, there is minimal benefit, and

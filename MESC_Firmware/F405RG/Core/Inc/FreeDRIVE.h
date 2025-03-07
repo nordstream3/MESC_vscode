@@ -83,7 +83,8 @@
 //#define SAFE_START_DEFAULT 0
 
 
-#define LOGGING
+//#define LOGGING
+#define STREAM_LOGGING
 
 //#define USE_I2C
 

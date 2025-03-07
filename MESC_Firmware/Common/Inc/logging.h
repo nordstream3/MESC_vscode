@@ -11,6 +11,9 @@
 #define POST_ERROR_SAMPLES 		LOGLENGTH/4
 #endif
 
+#define LOG_INTERVAL 1
+#define OSC_52_TAG_SIZE 7
+
 // Forward declaration of MESC_motor_typedef
 typedef struct MESC_motor_typedef MESC_motor_typedef;
 
@@ -44,14 +47,14 @@ extern sampled_vars_t sampled_vars;
 void logVars(MESC_motor_typedef *_motor);
 void printSamples(UART_HandleTypeDef *uart, DMA_HandleTypeDef *dma);
 
-
 extern volatile uint32_t log_count;
 
-uint8_t sample_init(MESC_motor_typedef *_motor, uint32_t log_time);
-//void sample_4bit();
+uint32_t sample_init(MESC_motor_typedef *_motor);
+void start_sample(uint32_t log_time);
+void sample_n_bits_2_4_8();
 void sample_n_bits();
-const unsigned char* getLogHeader();
-bool getDataChunk(uint8_t** data);
+char* getLogHeader();
+uint8_t* getDataChunk();
 
 
 #endif

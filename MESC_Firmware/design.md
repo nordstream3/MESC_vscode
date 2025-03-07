@@ -18,8 +18,8 @@ class iab {
 }
 
 class HFI {
-  uint16_t inject
-  uint16_t inject_high_low_now
+  uint16_t do_injection
+  uint16_t injection_sign
   float Vd_injectionV
   float Vq_injectionV
   float special_injectionVd

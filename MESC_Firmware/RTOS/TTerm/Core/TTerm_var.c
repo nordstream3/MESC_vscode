@@ -1079,6 +1079,13 @@ uint8_t CMD_varSave(TERMINAL_HANDLE * handle, uint8_t argCount, char ** args){
 		return TERM_CMD_EXIT_SUCCESS;
 	}
 
+	if(argCount && strcmp("-?",args[argCount-1])==0){
+		ttprintf("Usage: save [flags]\r\n");
+		ttprintf("\t -d\t Pre delete flash\r\n");
+		ttprintf("\t -h\t Only delete flash\r\n");
+		return TERM_CMD_EXIT_SUCCESS;
+	}
+
 	//Determine how much memory is needed
 	uint32_t n_bytes = sizeof(FlashHeader) + (sizeof(FlashVariable) * head->nameLength) + sizeof(FlashFooter);
 	for(;currPos < head->nameLength; currPos++){
